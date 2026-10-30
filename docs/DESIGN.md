@@ -249,3 +249,27 @@ is in `docs/PLAN.md`; where this file and PLAN differ, PLAN wins.)
 23. **Success check 3 passed (2026-10-30):** a small model (Haiku) given only the two shape files wrote a
     config that tokenized or dropped every private column (names, emails, phones, accounts), scanned the
     free text, and kept only dates, amounts and status.
+
+### From the fresh review (2026-10-30)
+
+24. **`scan` needs approval, like `keep`.** It leaves unknown words in, so it is a kind of keep. Without a
+    matching approval a `scan` column is tokenized. `approve` asks for each `scan` too.
+25. **Agent-run `standin` calls take no `--private` or `--project` flags**, and `approve`, `restore` and
+    `init` are blocked from the agent's shell wherever they appear in a command. A pseudo-terminal can fake
+    the TTY check, so the hook is what stops an agent approving its own config.
+26. **Detectors give the agent at most one bit.** When stdout is not a terminal, `check` says only whether it
+    found something, with no stand-in names or line numbers, and tells the agent to ask the person to run it.
+    The PostToolUse warning names no stand-in either. Otherwise the agent could test guessed names.
+27. **Shell habits that sweep the whole project are blocked.** The Bash hook denies glob characters,
+    brace lists and recursive tools (`grep -r`, `rg`, `find`, `tree` ...) unless every path in the command
+    is under `scrubbed/` or `shape/`. Still a guess; the sandbox is the wall. Docs say so more strongly.
+28. **No `keep` or `scan` on `[COLUMN_n]`.** A position-based keep would follow a re-ordered export.
+29. **Restore leaves stand-ins inside URLs and formulas alone** (a cell starting `= + - @`, or text inside
+    `http://`, `https://`, `](`, `src=`), and reports them (exit 1). Otherwise an AI-built link could send a
+    real value out when the file is opened.
+30. **Dropped values join the known list**, so a name dropped from one column is still swapped in notes.
+31. Smaller fail-closed fixes: refuse lone-CR line endings; no data-like file names in any message or
+    report (extension included); refuse two restores to the same output name; header checks match between
+    shape and scrub; headers equal to a known value are swapped; all-caps names, `O'`/`Mc` names and
+    no-break spaces are caught. Known misses kept: Unicode normal forms (no NFC in the standard library)
+    and Turkish dotted I.
