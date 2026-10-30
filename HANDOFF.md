@@ -17,15 +17,24 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 - Shapes are setup-only; day to day the agent sees scrubbed files only. Harness deny-configs are
   "not foolproof but help": ship them for Claude Code, Codex, OpenCode.
 
-## Status (2026-10-30 evening)
+## Status (2026-10-30 night)
 
-- Landed and pushed: research, release pipeline (minus workflows, see below), fixtures + e2e, core CLI,
-  hooks + init + skill. `go test ./...` green. Real Claude Code smoke test: `sh tools/claude_smoke.sh`
-  (4/4 on 2.1.314). Success check 3 passed (DESIGN decision 23).
-- Track V review done: 16 findings (4 high). Fix decisions are DESIGN 24-31. Fixes in flight: the hook
-  builder (internal/hook, initcmd, skill) and the core builder (cli + core packages), in parallel.
-  Then: rerun `go test ./...`, `sh tools/claude_smoke.sh`, then tag v0.1.0 and publish with a local
-  `goreleaser release` (the token cannot push workflows, so CI is not on GitHub yet).
+- v0.1.0 is READY but NOT released: tagging and publishing need Ryan's go-ahead (blocked by a permission
+  check). To release: `git tag -a v0.1.0 -m v0.1.0 && git push origin v0.1.0 &&
+  GITHUB_TOKEN=$(gh auth token) goreleaser release --clean` (goreleaser v2.12.7 is in ~/go/bin;
+  `goreleaser release --snapshot --clean` already builds all 6 archives).
+- All tracks landed. Fresh review: 16 findings, fixed per DESIGN 24-31; reviewer repros rerun clean
+  (except `--private` by hand, which is allowed for the person; the hook blocks it for agents).
+- `go test ./...` green. `sh tools/claude_smoke.sh`: 4/4 on Claude Code 2.1.314 (Linux).
+- Success check 3 passed (DESIGN 23).
+
+## For Ryan
+
+- Approve the v0.1.0 tag and release (above).
+- Then test the curl install on the Mac mini, and run `sh tools/claude_smoke.sh` there (needs go, claude).
+- Merge and push the local `ci-workflows` branch with a token that has `workflow` scope.
+- Windows: install.ps1 never run; Smart App Control and code signing are your call.
+- Sandbox snippet in `init` output is from docs, untested.
 
 ## Next (orchestrator)
 
