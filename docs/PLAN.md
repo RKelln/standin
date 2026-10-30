@@ -153,7 +153,8 @@ Exit 1 if any.
    so a name met in a later file is still known.
 3. Exit codes: `shape` 0, or 1 if it flagged a header or file name. `scrub` 0 when approved and clean.
    A config with no `keep` needs no approval.
-4. Restore and check reports go to stderr; stdout carries only the restored text (for `-`).
+4. Restore and check reports go to stderr; stdout carries only the restored text (for `-`). `restore -`
+   refuses (exit 2) when stdout is not a terminal: restore is for the person, not the agent.
 5. `approve` asks `Keep <column> in <match>? Type yes:` per keep. `approval.json`:
    `{"version":1,"config_sha256":"...","approved_at":"RFC3339","keeps":["<match>:<column>"]}`.
 6. The private folder hash uses the absolute path with symlinks resolved.

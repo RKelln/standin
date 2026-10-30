@@ -228,3 +228,13 @@ is in `docs/PLAN.md`; where this file and PLAN differ, PLAN wins.)
     path is not. Windows Smart App Control may block unsigned binaries: open item for Ryan (paid signing).
 16. **Agents report issues without data.** `standin report` prints version, OS, file kinds and shapes,
     never values, so a leak or a format gap gets fixed once.
+17. **Hook blocks are exit 2 plus a stderr reason, never JSON.** A change in the JSON format cannot then
+    turn a block into an allow. Only the Read redirect writes JSON, and only when the scrubbed copy is
+    strictly newer than the raw file.
+18. **The agent may run `standin shape|scrub|check|review|report|version`; only the person runs `restore`
+    and `approve`.** The Bash hook lets a single plain `standin` call name `raw/` (no shell metacharacters).
+    `restore -` refuses when stdout is not a terminal, so real values do not land in a transcript.
+19. **PostToolUse warns on known values only**; patterns fire too often in tool output.
+20. **`init --no-version-check`** is an escape hatch for unreadable `claude --version` output; it exits 1
+    with a loud warning. `init` advises, but does not turn on, Claude Code's sandbox (session-wide;
+    needs bubblewrap on Linux).

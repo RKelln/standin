@@ -321,8 +321,14 @@ func TestRestoreStandins(t *testing.T) {
 	}
 	vars := variants(rawInv, "Customer")
 
+	// restore - refuses a piped stdout, so real values never land in an agent transcript.
+	r := p.run([]byte("[PERSON_1]\n"), "restore", "-")
+	if r.code != 2 || r.stdout != "" {
+		t.Errorf("restore - with piped stdout: want exit 2 and no output\n%s", r)
+	}
+
 	in := "Paid: [PERSON_1], [PERSON_12] and [PERSON_7].\n[PERSON_12][PERSON_1]\n"
-	r := p.run([]byte(in), "restore", "-")
+	r = p.restoreText("known.md", in)
 	want := strings.NewReplacer("[PERSON_12]", persons["[PERSON_12]"], "[PERSON_1]", persons["[PERSON_1]"],
 		"[PERSON_7]", persons["[PERSON_7]"]).Replace(in)
 	if r.stdout != want {
@@ -339,7 +345,7 @@ func TestRestoreStandins(t *testing.T) {
 
 	// Unknown stand-ins and near-misses: unchanged, reported by stand-in, exit 1.
 	in = "Ask [PERSON_99]. Also [person_1], PERSON_1, [PERSON 1] and Person 1.\n"
-	r = p.run([]byte(in), "restore", "-")
+	r = p.restoreText("unknown.md", in)
 	if r.code != 1 {
 		t.Errorf("restore with unknown and near-miss stand-ins: want exit 1\n%s", r)
 	}
@@ -495,6 +501,20 @@ func assertTokenized(t *testing.T, text string, cols ...string) {
 			}
 		}
 	}
+}
+
+// restoreText writes in to out/name, restores it, and returns the result with
+// stdout replaced by the restored file's text.
+func (p *project) restoreText(name, in string) result {
+	p.t.Helper()
+	p.write("out/"+name, []byte(in))
+	r := p.run(nil, "restore", "out/"+name)
+	b, err := os.ReadFile(p.find("restored", name))
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	r.stdout = string(b)
+	return r
 }
 
 func TestApproveRefusesWithoutTTY(t *testing.T) {
