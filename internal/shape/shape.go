@@ -227,14 +227,8 @@ func Label(name string, index int) (label, flag string) {
 	if name == dataset.KeyColumn {
 		return name, ""
 	}
-	// The whole name first (a CSV header like an email has dots in it), then
-	// each part of a JSON path.
-	parts := append([]string{name}, strings.FieldsFunc(name, func(r rune) bool { return r == '.' })...)
-	for _, p := range parts {
-		p = strings.TrimSuffix(p, "[]")
-		if kind, ok := scan.LooksLikeData(p); ok {
-			return fmt.Sprintf("[COLUMN_%d]", index+1), kind
-		}
+	if kind, ok := scan.LooksLikeDataName(name); ok {
+		return fmt.Sprintf("[COLUMN_%d]", index+1), kind
 	}
 	if name == "" {
 		return fmt.Sprintf("[COLUMN_%d]", index+1), "empty"
@@ -393,12 +387,12 @@ func mdCode(s string) string {
 const ConfigHelp = "## How to write the config\n\n" +
 	"Write `standin.config.json` in the project folder. For each column, choose one action:\n\n" +
 	"- `tokenize`: swap each value for a stand-in like `[PERSON_1]`. The same value always gets the same stand-in. Needs a `category`.\n" +
-	"- `keep`: leave the real values as they are. Use it only when the work needs the real value and it is not private (amounts, dates, status words). A person must approve every keep.\n" +
-	"- `drop`: blank the value. Use it for things the work does not need.\n" +
-	"- `scan`: free text. Standin swaps known values and patterns (emails, phone numbers, long numbers, postal codes) and leaves the rest. Names it does not know stay in.\n\n" +
+	"- `keep`: leave the real values as they are. Use it only when the work needs the real value and it is not private (amounts, dates, status words). A person must approve every keep and every scan.\n" +
+	"- `drop`: blank the value. Use it for things the work does not need. It may have a `category`; Standin still swaps that value where it shows up in scan text.\n" +
+	"- `scan`: free text. Standin swaps known values and patterns (emails, phone numbers, long numbers, postal codes) and leaves the rest. Names it does not know stay in, so a person must approve it too.\n\n" +
 	"Categories: `PERSON ORG EMAIL PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE`.\n" +
 	"A column the config does not name is tokenized as `VALUE`. A free-text column it does not name is dropped.\n" +
-	"Give each choice a short `reason`. Use the column names above (for a hidden header, use `[COLUMN_n]`).\n" +
+	"Give each choice a short `reason`. Use the column names above (for a hidden header, use `[COLUMN_n]`; it can only be `tokenize` or `drop`).\n" +
 	"For JSON, nested names use dots (`address.city`) and lists use `[]` (`items[].name`).\n\n" +
 	"```json\n" +
 	"{\n" +

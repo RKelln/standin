@@ -75,7 +75,7 @@ func Load(path string) (m *Mapping, exists bool, err error) {
 		return New(), false, nil
 	}
 	if err != nil {
-		return nil, false, fail.New("mapping-read", "I could not read the mapping file (%s): %v", path, err)
+		return nil, false, fail.New("mapping-read", "I could not read the mapping file (%s): %s", path, fail.Reason(err))
 	}
 	m, err = Parse(b)
 	return m, true, err
@@ -207,4 +207,20 @@ func (m *Mapping) CountByCategory() []struct {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Category < out[j].Category })
 	return out
+}
+
+// FindValue finds a row whose normalised value equals value's, in any
+// category (the earliest row wins).
+func (m *Mapping) FindValue(value string) (Entry, bool) {
+	key := Normalize(value)
+	best := -1
+	for _, c := range Categories {
+		if i, ok := m.byKey[c+"\x00"+key]; ok && (best < 0 || i < best) {
+			best = i
+		}
+	}
+	if best < 0 {
+		return Entry{}, false
+	}
+	return m.Entries[best], true
 }

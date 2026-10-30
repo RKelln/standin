@@ -91,3 +91,20 @@ func TestLineNumbers(t *testing.T) {
 		t.Fatalf("got %+v", r.Unknown)
 	}
 }
+
+func TestLinksAndFormulasLeftAlone(t *testing.T) {
+	m := twelvePeople()
+	in := "Hi [PERSON_1]. <a href=\"https://x.example/[PERSON_2]\">x</a> www.x.example/[PERSON_3] ![i](q?[PERSON_4]) src=[PERSON_5]\n"
+	r, _ := Restore(in, m, Text)
+	want := "Hi Person Fake1. <a href=\"https://x.example/[PERSON_2]\">x</a> www.x.example/[PERSON_3] ![i](q?[PERSON_4]) src=[PERSON_5]\n"
+	if r.Out != want || len(r.Blocked) != 4 || !r.Issues() {
+		t.Fatalf("got %q blocked=%v", r.Out, r.Blocked)
+	}
+	r, _ = Restore("a,b\n[PERSON_1], @[PERSON_2]\n-[PERSON_3],+[PERSON_4]\n=[PERSON_5],x\n", m, CSV)
+	if r.Out != "a,b\nPerson Fake1,\" @[PERSON_2]\"\n-[PERSON_3],+[PERSON_4]\n=[PERSON_5],x\n" || len(r.Blocked) != 4 {
+		t.Fatalf("csv: %q %v", r.Out, r.Blocked)
+	}
+	if r.Blocked[3].Line != 4 {
+		t.Errorf("line of =[PERSON_5]: %d", r.Blocked[3].Line)
+	}
+}

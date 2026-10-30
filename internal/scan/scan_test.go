@@ -113,13 +113,19 @@ func TestLooksLikeData(t *testing.T) {
 		"604-555-0120":            "phone",
 		"10023":                   "digits",
 		"Client 12345678":         "digits",
+		"ZELDA QUORN":             "name",
+		"Sean O'Brien":            "name",
+		"Ann McNab":               "name",
+		"Bill Gatesby":            "name",
+		"lee_pip":                 "name",
+		"Balance.Zelda Quorn":     "name",
 	}
 	for in, want := range yes {
 		if got, ok := LooksLikeData(in); !ok || got != want {
 			t.Errorf("LooksLikeData(%q) = %q, %v; want %q", in, got, ok, want)
 		}
 	}
-	for _, in := range []string{"Month", "Total", "Customer Name", "Invoice Date", "address.city", "2026-01", "2026", "Amount", "invoices", "bank-export"} {
+	for _, in := range []string{"Month", "Total", "Customer Name", "Invoice Date", "address.city", "2026-01", "2026", "Amount", "invoices", "bank-export", "Unit Price", "TOTAL AMOUNT", "last_order", "card_on_file", "invoices.csv"} {
 		if kind, ok := LooksLikeData(in); ok {
 			t.Errorf("LooksLikeData(%q) = %q; want not data", in, kind)
 		}
@@ -129,5 +135,14 @@ func TestLooksLikeData(t *testing.T) {
 func TestHasStandin(t *testing.T) {
 	if !HasStandin("Same as [PERSON_2], ask") || HasStandin("[person_2]") || HasStandin("[PERSON_0]") {
 		t.Fatal("HasStandin wrong")
+	}
+}
+
+func TestKnownNoBreakSpace(t *testing.T) {
+	m := mapping.New()
+	st := m.Get("PERSON", "Zelda Quorn")
+	out, _ := Replace("call Zelda\u00a0Quorn and Zelda\u2003 Quorn", NewKnown(m), m)
+	if out != "call "+st+" and "+st {
+		t.Fatalf("got %q", out)
 	}
 }

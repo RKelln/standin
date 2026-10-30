@@ -170,7 +170,8 @@ func TestPreToolUse(t *testing.T) {
 		{"bash scrubbed ok", j("Bash", map[string]any{"command": "wc -l scrubbed/fresh.csv && echo drawing"}), 0, "", ""},
 		{"bash standin check ok", j("Bash", map[string]any{"command": "standin check scrubbed/out.md"}), 0, "", ""},
 		{"bash standin scrub raw ok", j("Bash", map[string]any{"command": "standin scrub raw/fresh.csv"}), 0, "", ""},
-		{"bash standin shape raw ok", j("Bash", map[string]any{"command": "standin shape --project . raw/a.csv raw/b.csv"}), 0, "", ""},
+		{"bash standin shape raw ok", j("Bash", map[string]any{"command": "standin shape raw/a.csv raw/b.csv"}), 0, "", ""},
+		{"bash standin shape project flag", j("Bash", map[string]any{"command": "standin shape --project . raw/a.csv"}), 2, "", "--project"},
 		{"bash standin then cat", j("Bash", map[string]any{"command": "standin scrub raw/a.csv; cat raw/a.csv"}), 2, "", "raw/"},
 		{"bash standin pipe", j("Bash", map[string]any{"command": "standin check raw/a.csv | tee x"}), 2, "", "raw/"},
 		{"bash standin subst", j("Bash", map[string]any{"command": "standin scrub $(cat raw/a.csv)"}), 2, "", "raw/"},
@@ -440,7 +441,7 @@ func TestNoMappingYet(t *testing.T) {
 // Runs last by name order within this file is not guaranteed, so it runs every
 // other test itself first, then checks every output it saw.
 func TestNoValueEverPrinted(t *testing.T) {
-	for _, fn := range []func(*testing.T){TestPreToolUse, TestMalformedAndArgs, TestProjectFromCwd, TestSymlinkIntoRaw, TestUserPrompt, TestPostToolUse, TestBadMapping, TestNoMappingYet} {
+	for _, fn := range []func(*testing.T){TestPreToolUse, TestMalformedAndArgs, TestProjectFromCwd, TestSymlinkIntoRaw, TestUserPrompt, TestPostToolUse, TestBadMapping, TestNoMappingYet, TestBashPlaceFlagsDenied, TestBashCatOutsideFolderWithWildcardDenied, TestBashSweepingReadsDenied, TestBashNormalWorkAllowed, TestBashPersonOnlyCommandsDenied, TestPowerShellPersonOnlyDenied, TestHomePathsIntoRaw, TestPostToolUseWarningNamesNothing} {
 		fn(t)
 	}
 	if len(allOutput) < 50 {

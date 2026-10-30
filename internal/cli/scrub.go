@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/RKelln/standin/internal/config"
 	"github.com/RKelln/standin/internal/dataset"
@@ -30,13 +31,13 @@ type scrubFile struct {
 	out   []byte
 }
 
-// approvalState loads the approval and says whether keeps may be used.
+// approvalState loads the approval and says whether keeps and scans may be used.
 func (c *ctx) approvalState(cfg *config.Config, privDir string) (approved bool, why string, err error) {
 	a, err := store.LoadApproval(privDir)
 	if err != nil {
 		return false, "", err
 	}
-	if !hasKeeps(cfg) {
+	if !needsApproval(cfg) {
 		return true, "", nil
 	}
 	if a == nil {
@@ -48,10 +49,12 @@ func (c *ctx) approvalState(cfg *config.Config, privDir string) (approved bool, 
 	return true, "", nil
 }
 
-func hasKeeps(cfg *config.Config) bool {
+// needsApproval: a keep shows real values, and a scan leaves in every word it
+// does not know, so both need a person to say yes.
+func needsApproval(cfg *config.Config) bool {
 	for _, f := range cfg.Files {
 		for _, col := range f.Columns {
-			if col.Action == config.Keep {
+			if col.Action == config.Keep || col.Action == config.Scan {
 				return true
 			}
 		}
@@ -139,24 +142,32 @@ func runScrub(c *ctx) error {
 		sfs = append(sfs, sf)
 	}
 	if !approved {
-		c.warn("%s Every column marked keep is tokenized instead. Run `standin approve` to use the keeps.", why)
+		c.warn("%s Every column marked keep or scan is tokenized instead. Run `standin approve` yourself to use them.", why)
 	}
 
 	// Pass 1: tokenize columns (and data-like headers) in every file, so
 	// every known value is in the mapping before any scan.
+	// Dropped values join the mapping too (they are not written anywhere),
+	// so a name dropped from one column is still swapped in scan text.
 	for _, sf := range sfs {
-		for _, h := range sf.d.Header() {
-			headerStandin(m, h)
-		}
 		for col, p := range sf.plans {
-			if p.action != config.Tokenize {
+			if p.action != config.Tokenize && p.action != config.Drop {
 				continue
+			}
+			cat := p.category
+			if cat == "" {
+				cat = "VALUE"
 			}
 			for _, v := range sf.d.Values[col] {
 				if strings.TrimSpace(v) != "" {
-					m.Get(p.category, v)
+					m.Get(cat, v)
 				}
 			}
+		}
+	}
+	for _, sf := range sfs {
+		for _, h := range sf.d.Header() {
+			headerStandin(m, h)
 		}
 	}
 	// Pass 2: scan columns, then build each output.
@@ -224,10 +235,17 @@ func runScrub(c *ctx) error {
 	return nil
 }
 
-// headerStandin swaps a header or JSON key that looks like data for a stand-in.
+// headerStandin swaps a header or JSON key for a stand-in when it looks like
+// data (the same check as the shape file), or when it equals a value
+// already in the mapping.
 func headerStandin(m *mapping.Mapping, name string) string {
-	if kind, ok := scan.LooksLikeData(name); ok {
+	if kind, ok := scan.LooksLikeDataName(name); ok {
 		return m.Get(scan.CategoryForKind(kind), name)
+	}
+	if utf8.RuneCountInString(mapping.Normalize(name)) >= scan.MinKnownLen {
+		if e, ok := m.FindValue(name); ok {
+			return m.Get(e.Category, name)
+		}
 	}
 	return name
 }
@@ -260,7 +278,7 @@ func (c *ctx) planColumns(cfg *config.Config, sf *scrubFile, approved bool) erro
 			}
 		}
 		switch {
-		case found && col.Action == config.Keep && !approved:
+		case found && (col.Action == config.Keep || col.Action == config.Scan) && !approved:
 			cat := "VALUE"
 			if name == dataset.KeyColumn {
 				cat = "KEY"

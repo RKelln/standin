@@ -30,8 +30,15 @@ always gets the same stand-in, so you can still match a payment to an invoice.
 3. Keep every stand-in exactly as it is: same brackets, same capitals, same number.
    `[PERSON_1]` is right. `Person 1`, `[person_1]` and `PERSON_1` will not be put back.
 4. Never make up a real-looking value to replace a stand-in. Leave the stand-in.
-5. Never run `standin restore`. Only the person runs it, because it shows real values.
-6. If the person pastes a real name or number to you, do not repeat it. Ask them to use the
+5. Never run `standin approve`, `standin restore` or `standin init`, not even through another
+   program (`sh -c`, `script`, `expect`). Only the person runs them: approve says yes to showing
+   real data, restore shows real values, and init sets up the guards.
+6. Never pass `--private` or `--project` to standin. Standin picks those places itself, so the
+   secret stays where you cannot reach it.
+7. In the shell, name files inside `scrubbed/` or `shape/`. Do not use wildcards (`* ? [ {`) or
+   whole-folder tools (`grep -r`, `rg`, `find`, `tree`) on the project folder. Write
+   `grep -rn word scrubbed/`, not `grep -rn word .`.
+8. If the person pastes a real name or number to you, do not repeat it. Ask them to use the
    stand-in instead.
 
 ## Setup: once per kind of file
@@ -39,7 +46,7 @@ always gets the same stand-in, so you can still match a payment to an invoice.
 The person does the steps marked **(person)**. You can run the others if you have a shell.
 
 1. The person puts the real file in `raw/`, for example `raw/invoices.csv`.
-2. Run `standin shape raw/invoices.csv`. It writes `shape/invoices.csv.shape.md`.
+2. Run `standin shape raw/invoices.csv` (with no `--private` or `--project`). It writes `shape/invoices.csv.shape.md`.
 3. Read the shape file only. Propose the config: for each column pick one action and give a
    short reason.
    - `tokenize` (swap each value for a stand-in). Needs a `category`: `PERSON`, `ORG`,
@@ -81,8 +88,12 @@ Standin lowers what you see. It does not make data safe to share. Know its gaps:
 - Patterns stay visible: how often a stand-in appears, which ones go together, amounts and
   dates that were kept. Someone could sometimes guess who a stand-in is from this.
 - Files it cannot read (PDF, Excel, Word, images) are refused, not scrubbed.
-- The hooks are a safety net, not a wall. A shell command or a script can still read `raw/`
-  if nothing else stops it. The Bash check only guesses from the command text.
+- The hooks are a safety net, not a wall. The shell check only guesses from the command text,
+  so a script or a clever command can still read `raw/`. That is why rule 2 matters: do not
+  look for a way around it. Suggest the person turns on Claude Code's sandbox, which blocks
+  every program from `raw/` and `restored/` (macOS, Linux and WSL2; not plain Windows).
+- If a tool result may hold a real value, the hook warns you without saying which one. Stop and
+  ask the person to check.
 - Hooks do not see `@file` mentions, CLAUDE.md or memory files, pasted text, or text already in
   the chat. Once a real value is in the chat, it stays in that chat.
 - Restore only puts back exact stand-ins. A changed stand-in is reported, not fixed.

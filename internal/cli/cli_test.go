@@ -55,6 +55,8 @@ func (p *tp) run(stdin string, tty bool, args ...string) res {
 	code := Run(append(args, "--project", p.dir), Env{
 		Stdin: strings.NewReader(stdin), Stdout: &o, Stderr: &e,
 		StdinIsTerminal: func() bool { return tty },
+		// tty means a person at a screen: stdin and stdout are terminals.
+		StdoutIsTerminal: func() bool { return tty },
 		Getenv: func(k string) string {
 			if k == "STANDIN_HOME" {
 				return p.home
@@ -204,10 +206,10 @@ func TestApproveNeedsTerminal(t *testing.T) {
 	}
 }
 
-func TestNoKeepsNeedsNoApproval(t *testing.T) {
+func TestNoKeepOrScanNeedsNoApproval(t *testing.T) {
 	p := newTP(t)
 	p.write("raw/bank.csv", bank)
-	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/bank.csv","columns":{"Date":{"action":"tokenize","category":"VALUE"},"Description":{"action":"scan"}}}]}`)
+	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/bank.csv","columns":{"Date":{"action":"tokenize","category":"VALUE"},"Description":{"action":"drop"}}}]}`)
 	r := p.run("", false, "scrub")
 	if r.code != 0 {
 		t.Fatalf("%+v", r)
@@ -220,7 +222,7 @@ func TestCheckNeverPrintsValues(t *testing.T) {
 	p.write("standin.config.json", cfg)
 	p.run("", false, "scrub", "raw/invoices.csv")
 	text := "Please ask Ann Fakelee, or mail bo.fakeson@example.com, or 416-555-0199 or card 4111 1111 1111 1111.\n"
-	r := p.run(text, false, "check", "-")
+	r := p.run(text, true, "check", "-") // on a screen: full detail
 	if r.code != 1 {
 		t.Fatalf("%+v", r)
 	}
@@ -303,13 +305,13 @@ func TestNoConfigRefused(t *testing.T) {
 func TestDataLikeHeaderTokenized(t *testing.T) {
 	p := newTP(t)
 	p.write("raw/wide.csv", "Month,Ann Fakelee,Total\n2026-01,1.00,1.00\n")
-	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.csv","columns":{"Month":{"action":"keep"},"[COLUMN_2]":{"action":"keep"},"Total":{"action":"keep"}}}]}`)
+	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.csv","columns":{"Month":{"action":"keep"},"[COLUMN_2]":{"action":"drop"},"Total":{"action":"keep"}}}]}`)
 	p.approve()
 	r := p.run("", false, "scrub")
 	if r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
-	if got := p.read("scrubbed/wide.csv"); got != "Month,[PERSON_1],Total\n2026-01,1.00,1.00\n" {
+	if got := p.read("scrubbed/wide.csv"); got != "Month,[PERSON_1],Total\n2026-01,,1.00\n" {
 		t.Errorf("got %q", got)
 	}
 }

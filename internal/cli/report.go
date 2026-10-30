@@ -78,6 +78,8 @@ func runReport(c *ctx) error {
 		ext := strings.ToLower(filepath.Ext(d.Name()))
 		if ext == "" {
 			ext = "(none)"
+		} else if !plainExt[ext] {
+			ext = "(other)" // an unknown extension could hold private text
 		}
 		exts[ext]++
 		if _, err := dataset.KindFor(path); err != nil {
@@ -151,4 +153,14 @@ func runReport(c *ctx) error {
 		p("- Private folder: %s", fail.Code(perr))
 	}
 	return nil
+}
+
+// File extensions the report may name. Any other is shown as "(other)".
+var plainExt = map[string]bool{}
+
+func init() {
+	for _, e := range strings.Fields(".csv .tsv .json .txt .md .pdf .xlsx .xls .xlsm .ods .numbers .docx .doc .odt .rtf .pages " +
+		".png .jpg .jpeg .gif .heic .webp .tif .tiff .bmp .ofx .qfx .qbo .iif .xml .html .htm .zip .eml .msg .mbox") {
+		plainExt[e] = true
+	}
 }

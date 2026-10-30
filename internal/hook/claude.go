@@ -202,16 +202,48 @@ func (c *claude) redirect(p string, input map[string]any) int {
 }
 
 var (
-	segRe     = regexp.MustCompile("(?i)(^|[\\s\"'=(/\\\\:;|&<>`])(raw|restored)($|[\\s\"'/\\\\*;|&<>)`])")
-	restoreRe = regexp.MustCompile(`(?i)\bstandin(\.exe)?["']?\s+restore\b`)
+	segRe = regexp.MustCompile("(?i)(^|[\\s\"'=(/\\\\:;|&<>`])(raw|restored)($|[\\s\"'/\\\\*;|&<>)`])")
+	// standin named anywhere (bare, by path, or .exe), then a command only the person may run.
+	standinWordRe = regexp.MustCompile(`(?i)(^|[^a-z0-9_-])standin(\.exe)?($|[^a-z0-9_-])`)
+	personOnlyRe  = regexp.MustCompile("(?i)(^|[\\s;|&(`=])(approve|restore|init)($|[\\s;|&)`])")
+	// --private, -private, --project, -project, with or without =value.
+	placeFlagRe = regexp.MustCompile(`(?i)(^|[\s;|&(=])--?(private|project)($|[\s=])`)
 	// One plain standin command that never prints a real value, with no shell
 	// joins, pipes, redirects or substitutions. It may name raw/ (to shape or scrub it).
 	// The program must be the bare word standin (found on PATH) or this very program.
 	safeStandinRe = regexp.MustCompile("^\\s*(standin|STANDIN_SELF)\\s+(shape|scrub|check|review|report|version)\\b[^;|&`$()<>{}\\n\\r]*$")
+	// Short flag clusters that mean "recursive" for grep, cp, ls and friends.
+	recFlagRe = regexp.MustCompile(`^-[A-Za-z]*[rR][A-Za-z]*$`)
 )
+
+// Tools that walk whole folder trees by themselves.
+var sweepTools = map[string]bool{
+	"rg": true, "ag": true, "ack": true, "find": true, "fd": true, "tree": true, "du": true,
+	"tar": true, "zip": true, "rsync": true, "get-childitem": true, "gci": true,
+}
+
+// Tools that walk folder trees when given a recursive flag.
+var recTools = map[string]bool{
+	"grep": true, "egrep": true, "fgrep": true, "zgrep": true, "cp": true, "ls": true,
+	"chmod": true, "chown": true, "select-string": true, "copy-item": true, "dir": true,
+}
+
+const personOnlyMsg = "Only the person runs standin approve, restore and init, in their own terminal. The AI must never run them, not even through another program."
 
 // shellRisk returns why a shell command looks like it touches a protected place, or "".
 func (c *claude) shellRisk(cmd string) string {
+	// Quotes and backslashes can split a word ("stand"in, s\tandin); drop them for the word checks.
+	// A backslash may be an escape (s\tandin) or a Windows path (C:\Tools\standin.exe): try both.
+	flat := strings.NewReplacer(`"`, "", "'", "", `\`, "").Replace(cmd)
+	flatPath := strings.NewReplacer(`"`, "", "'", "", `\`, "/").Replace(cmd)
+	for _, x := range []string{flat, flatPath} {
+		if standinWordRe.MatchString(x) && personOnlyRe.MatchString(x) {
+			return personOnlyMsg
+		}
+	}
+	if placeFlagRe.MatchString(flat) {
+		return "Do not pass --private or --project. Standin picks those places itself, so the secret stays where the AI cannot reach it."
+	}
 	if safeStandin(cmd) {
 		return ""
 	}
@@ -235,10 +267,174 @@ func (c *claude) shellRisk(cmd string) string {
 			return "This command uses the private store, where the secret list of real values lives."
 		}
 	}
-	if restoreRe.MatchString(cmd) {
-		return "Only the person runs standin restore, because it shows real values."
+	if reason := c.sweepRisk(cmd); reason != "" {
+		return reason
 	}
 	return ""
+}
+
+// shellWord is one word of a shell command, roughly as the shell splits it.
+type shellWord struct {
+	text string // quotes removed
+	glob bool   // has * ? [ or { outside quotes
+}
+
+// splitShell splits a command into words. It is rough: it knows quotes,
+// backslashes and the common operators, nothing more.
+func splitShell(cmd string) []shellWord {
+	var out []shellWord
+	var cur strings.Builder
+	var glob, have bool
+	flush := func() {
+		if have {
+			out = append(out, shellWord{text: cur.String(), glob: glob})
+		}
+		cur.Reset()
+		glob, have = false, false
+	}
+	var quote rune
+	rs := []rune(cmd)
+	for i := 0; i < len(rs); i++ {
+		r := rs[i]
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			} else if r == '\\' && quote == '"' && i+1 < len(rs) {
+				i++
+				cur.WriteRune(rs[i])
+			} else {
+				cur.WriteRune(r)
+			}
+		case r == '\'' || r == '"':
+			quote, have = r, true
+		case r == '\\' && i+1 < len(rs):
+			i++
+			cur.WriteRune(rs[i])
+			have = true
+		case strings.ContainsRune(" \t\r\n;|&()<>`", r):
+			flush()
+		case r == '$' && i+1 < len(rs) && rs[i+1] == '(':
+			flush()
+		default:
+			if strings.ContainsRune("*?[{", r) {
+				glob = true
+			}
+			cur.WriteRune(r)
+			have = true
+		}
+	}
+	flush()
+	return out
+}
+
+// pathLike says whether a word names a file or folder (or a pattern of them).
+// A plain word counts if a file or folder by that name exists in cwd.
+func pathLike(w shellWord, cwd string) (string, bool) {
+	t := w.text
+	if strings.HasPrefix(t, "-") {
+		i := strings.Index(t, "=")
+		if i < 0 {
+			return "", false
+		}
+		t = t[i+1:]
+	}
+	if t == "" {
+		return "", false
+	}
+	if w.glob || t == "." || t == ".." || strings.HasPrefix(t, "~") || strings.HasPrefix(t, "$HOME") ||
+		strings.HasPrefix(t, "${HOME}") || strings.ContainsAny(t, `/\`) {
+		return t, true
+	}
+	if _, err := os.Lstat(filepath.Join(cwd, t)); err == nil {
+		return t, true
+	}
+	return "", false
+}
+
+// sweepRisk denies wildcards and folder-walking tools unless every path in the
+// command is inside scrubbed/ or shape/ (decision 27). It is a guess from the text.
+func (c *claude) sweepRisk(cmd string) string {
+	words := splitShell(cmd)
+	glob, rec := false, false
+	recTool, lowRTool := false, false
+	for _, w := range words {
+		if w.glob {
+			glob = true
+		}
+		base := strings.ToLower(filepath.Base(filepath.ToSlash(w.text)))
+		base = strings.TrimSuffix(base, ".exe")
+		if sweepTools[base] {
+			rec = true
+		}
+		if recTools[base] {
+			recTool = true
+			if base != "ls" && base != "dir" {
+				lowRTool = true
+			}
+		}
+	}
+	if recTool {
+		for _, w := range words {
+			lw := strings.ToLower(w.text)
+			// -R is recursive everywhere; -r too, except for ls (where it means reverse).
+			short := recFlagRe.MatchString(w.text) && (strings.Contains(w.text, "R") || lowRTool)
+			if short || lw == "--recursive" || lw == "-recurse" || lw == "--dereference-recursive" || lw == "/s" {
+				rec = true
+			}
+		}
+	}
+	if !glob && !rec {
+		return ""
+	}
+	safe := []string{filepath.Join(c.g.Project, ScrubbedDir), filepath.Join(c.g.Project, ShapeDir)}
+	inSafe := func(p string) bool {
+		a := c.g.abs(p, c.cwd())
+		for _, f := range forms(a) {
+			for _, s := range safe {
+				if within(f, s) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	paths := 0
+	if len(words) == 0 {
+		return c.sweepMsg()
+	}
+	for _, w := range words[1:] {
+		t, ok := pathLike(w, c.cwd())
+		if !ok {
+			continue
+		}
+		paths++
+		if w.glob {
+			// Only the part before the first wildcard is fixed; check its folder.
+			i := strings.IndexAny(t, "*?[{")
+			t = t[:i]
+			if j := strings.LastIndexAny(t, `/\`); j >= 0 {
+				t = t[:j+1]
+			} else {
+				t = ""
+			}
+			if t == "" {
+				t = "."
+			}
+		}
+		if !inSafe(t) {
+			return c.sweepMsg()
+		}
+	}
+	if paths == 0 && !inSafe(".") {
+		return c.sweepMsg() // a search with no path starts here, which reaches raw/
+	}
+	return ""
+}
+
+func (c *claude) sweepMsg() string {
+	return "This command uses wildcards (* ? [ {) or searches whole folders, so it could reach raw/ or restored/. " +
+		"Name files inside scrubbed/ or shape/ instead, like: grep -rn word scrubbed/"
 }
 
 func (c *claude) scanner() (Scanner, int) {
@@ -286,13 +482,14 @@ func (c *claude) postToolUse() int {
 	}
 	var sb strings.Builder
 	flatten(v, &sb)
-	fs := knownOnly(s.Scan(sb.String()))
-	if len(fs) == 0 {
+	if len(knownOnly(s.Scan(sb.String()))) == 0 {
 		return exitOK
 	}
-	note := "[standin] Warning: this tool result has " + describe(fs) + ". " +
-		"Do not repeat, copy or save these values. Use the stand-ins instead. " +
-		"Tell the person a real value got through, and ask them to run standin report and describe how it happened, with no data in the description."
+	// Say nothing about which value or how many (decision 26), so the agent
+	// cannot use this warning to test guesses.
+	note := "[standin] Warning: a real value may be in that tool output. " +
+		"Do not repeat, copy or save anything from it. " +
+		"Ask the person to check it, and to run standin report and describe how it happened, with no data in the description."
 	return c.emit(map[string]any{
 		"hookSpecificOutput": map[string]any{
 			"hookEventName":     "PostToolUse",

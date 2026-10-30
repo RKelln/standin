@@ -126,6 +126,12 @@ func runRestore(c *ctx) error {
 			return fail.New("write", "%s: the restored JSON would not be valid, so I wrote nothing.", label)
 		}
 		if out != "" {
+			for _, o := range outs {
+				if strings.EqualFold(o.Path, out) {
+					r, _ := c.rel(out)
+					return fail.New("same-output", "Two of the files would be restored to the same name (%s), and one would replace the other. Restore them one at a time, or rename one.", show(r))
+				}
+			}
 			outs = append(outs, store.Out{Path: out, Data: []byte(res.Out), Perm: 0o600})
 		}
 		jobs = append(jobs, job{a, label, res, out})
@@ -158,6 +164,9 @@ func (c *ctx) reportRestore(label string, r restore.Result) {
 			like = " It looks like " + f.Like + "."
 		}
 		c.warn("%s line %d: %q looks almost like a stand-in, so I did not change it.%s Fix it by hand if needed.", label, f.Line, f.Text, like)
+	}
+	for _, f := range r.Blocked {
+		c.warn("%s line %d: %s is inside a web link or a spreadsheet formula, so I did not put the real value there (opening the file could send it out). Fill it in by hand if you need it.", label, f.Line, f.Text)
 	}
 	if n := len(r.Spellings); n > 0 {
 		c.warn("%s: %d stand-in(s) had more than one spelling; the first one was used: %s", label, n, strings.Join(r.Spellings, ", "))
@@ -204,6 +213,17 @@ func runCheck(c *ctx) error {
 				}
 			}
 		}
+	}
+	if !c.env.StdoutIsTerminal() {
+		// Not a screen: maybe an AI tool. Say one thing only, so the
+		// answer cannot be used to test guesses about real values.
+		if len(found) == 0 {
+			c.msg("Found nothing. This check only knows the mapping and some patterns.")
+		} else {
+			c.warnings++
+			c.msg("Found something that may be private. Ask the person to run `standin check` in their own terminal to see where.")
+		}
+		return nil
 	}
 	for _, f := range found {
 		c.warn("%s line %d: %s", f.label, f.line, f.what)

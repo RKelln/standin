@@ -79,7 +79,7 @@ func Load(path string) (*Dataset, error) {
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fail.New("read", "I could not read the file: %v", err)
+		return nil, fail.New("read", "I could not read the file (%s).", fail.Reason(err))
 	}
 	return Parse(kind, b)
 }
@@ -95,6 +95,9 @@ func Parse(kind string, b []byte) (*Dataset, error) {
 	}
 	if strings.TrimSpace(text) == "" {
 		return nil, fail.New("empty", "This file is empty.")
+	}
+	if (kind == CSV || kind == TSV) && hasLoneCR(text) {
+		return nil, fail.New("lone-cr", "This file ends its lines in an old way (a lone carriage return, from old Mac programs), so I cannot tell where rows end. Open it in a text editor or spreadsheet and save it with normal line endings, then try again.")
 	}
 	var d *Dataset
 	switch kind {
@@ -205,3 +208,13 @@ func (d *Dataset) Where(col, i int) string {
 
 // Header returns the CSV header cells (nil for JSON).
 func (d *Dataset) Header() []string { return d.header }
+
+// hasLoneCR reports a carriage return that is not followed by a line feed.
+func hasLoneCR(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\r' && (i+1 == len(s) || s[i+1] != '\n') {
+			return true
+		}
+	}
+	return false
+}

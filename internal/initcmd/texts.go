@@ -24,7 +24,11 @@ This project uses standin to keep private details away from AI agents.
 - The mapping is the secret: the list that turns stand-ins back into real values. It lives outside this
   folder. Never look for it, read it or ask for it.
 - Keep every stand-in exactly as it is in anything you write. The person puts real values back with
-  ` + "`standin restore`" + `. You never run it.
+  ` + "`standin restore`" + `.
+- Never run ` + "`standin approve`" + `, ` + "`standin restore`" + ` or ` + "`standin init`" + `, not even through another
+  program. Only the person runs them. Never pass ` + "`--private`" + ` or ` + "`--project`" + ` to standin.
+- Do not use wildcards or whole-folder searches outside ` + "`scrubbed/`" + `. Name files in ` + "`scrubbed/`" + `,
+  like ` + "`grep -rn word scrubbed/`" + `.
 - New file? Read its shape file in ` + "`shape/`" + ` and propose rules in ` + "`standin.config.json`" + `.
   The person runs ` + "`standin review`" + ` and ` + "`standin approve`" + `, then ` + "`standin scrub`" + `.
 - Problem (a real value got through, a file will not scrub)? Stop. Ask the person to run

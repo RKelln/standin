@@ -25,7 +25,7 @@ Agents do not commit; the orchestrator reviews and commits.
 - No package that can open a network connection is linked (`net`, `net/http`, `net/rpc`, `crypto/tls`...).
   A test checks `go list -deps ./cmd/standin`.
 - Fail closed: on any parse error or doubt, write no output file and say why. Exit 2.
-- Default-deny: a value is tokenized unless the approved config says `keep`.
+- Default-deny: a value is tokenized unless the approved config says `keep` (or `scan`, for free text).
 - No command ever prints a real value from a tokenized column, except `restore` (which writes for the
   person, into `restored/` or stdout when asked).
 - Messages near grade 6. Errors say what happened and what to do next.
@@ -55,19 +55,23 @@ files `0600`. Every command that uses it prints its path once.
 ```
 standin shape  [--project DIR] FILE...        raw/x.csv -> shape/x.csv.shape.md
 standin review [--project DIR]                print the config as a plain table (keeps first)
-standin approve [--project DIR]               needs a terminal (stdin is a TTY); asks yes per `keep`;
+standin approve [--project DIR]               needs a terminal (stdin is a TTY); asks yes per `keep`
+                                              and per `scan`;
                                               stores sha256 of the config in approval.json
 standin scrub  [--project DIR] [FILE...]      raw/** (or FILEs) -> scrubbed/<same path>; updates mapping
 standin restore [--project DIR] FILE... | -   scrubbed-style text -> restored/<same path>, or stdout for -
-standin check  [--project DIR] FILE... | -    finds real values (from mapping) and PII patterns; prints
-                                              token names and pattern kinds, never the value; exit 1 if any
+standin check  [--project DIR] FILE... | -    finds real values (from mapping) and PII patterns; on a
+                                              terminal prints token names, pattern kinds and lines, never
+                                              the value; off a terminal only "found something" or "found
+                                              nothing"; exit 1 if any
 standin report [--project DIR]                a data-free issue report (version, OS, file kinds, shapes,
                                               last errors) to stdout
 standin version
 ```
 
-`scrub` without an approval whose hash matches the current config: every column is tokenized (keeps are
-ignored) and it warns, exit 1. Changing the config voids the approval.
+`scrub` without an approval whose hash matches the current config: every `keep` and `scan` column is
+tokenized as `VALUE` (`KEY` for `(key)`) and it warns, exit 1. Changing the config voids the approval.
+A config with no `keep` and no `scan` needs no approval.
 
 ### Input formats (MVP)
 
@@ -115,15 +119,21 @@ ignored) and it warns, exit 1. Changing the config voids the approval.
 ```
 
 - `match`: a glob relative to the project, `path.Match` rules plus `**`. First match wins.
-- Actions: `tokenize` (needs `category`), `keep`, `drop` (value becomes empty), `scan` (free text: pattern
-  pass plus known-values pass, everything else stays). A column absent from the config is `tokenize VALUE`.
+- Actions: `tokenize` (needs `category`), `keep`, `drop` (value becomes empty; an optional `category`),
+  `scan` (free text: pattern pass plus known-values pass, everything else stays). A column absent from the
+  config is `tokenize VALUE`. Dropped values still get stand-ins in the mapping (their `category`, or
+  `VALUE`), so scan swaps them where they show up in free text.
+- `[COLUMN_n]` (a column named by position) may only be `tokenize` or `drop`: a position-based keep would
+  follow a re-ordered export.
   Free-text-looking columns (avg > 40 chars or many spaces) absent from the config: `drop`, and warn.
 - Unknown keys or actions: refuse.
 
 ### Scan pass (`scan` columns and `check`)
 
-- Known values: every real value in the mapping, matched case-insensitive on word boundaries, longest first,
-  replaced by its stand-in. Values shorter than 3 chars are skipped (too many false hits).
+- Known values: every real value in the mapping, matched case-insensitive on Unicode word boundaries,
+  longest first, any run of spaces (including no-break and other Unicode spaces) between words, replaced by
+  its stand-in. Values shorter than 3 chars are skipped (too many false hits). Known misses: Unicode normal
+  forms (NFC vs NFD) and Turkish dotted I.
 - Patterns (port from Get2Know `check_share.py`, same author, MIT): email, phone, card (Luhn), Canadian SIN
   (Luhn), IBAN, runs of 8+ digits, CA/US/UK postal codes. Each match becomes a new stand-in in its category.
 - Names not in the mapping stay. The output says so.
@@ -142,8 +152,10 @@ shape file uses `file_n` and says to rename the raw file.
 ### Restore
 
 Strict: replaces every exact stand-in it knows, longest first, never fuzzy (`[PERSON_1]` vs `[PERSON_7]` is one edit). Reports (by stand-in, not value): unknown stand-ins
-(`[PERSON_99]`), and near-misses it did not change (`[person_1]`, `PERSON_1`, `[PERSON 1]`, `Person 1`).
-Exit 1 if any.
+(`[PERSON_99]`), near-misses it did not change (`[person_1]`, `PERSON_1`, `[PERSON 1]`, `Person 1`), and
+known stand-ins it left alone because they sit in a link or a formula: in any text, inside `http://`,
+`https://`, `www.`, after `](`, `src=` or `href=`; in CSV/TSV, any cell starting `= + - @` (after
+trimming). Two inputs that would land on the same `restored/` name: refuse. Exit 1 if any finding.
 
 ### Settled details (2026-10-30, from track C questions)
 
@@ -152,19 +164,30 @@ Exit 1 if any.
 2. `scrub` of many files runs in two passes: tokenize columns of every file first, then `scan` columns,
    so a name met in a later file is still known.
 3. Exit codes: `shape` 0, or 1 if it flagged a header or file name. `scrub` 0 when approved and clean.
-   A config with no `keep` needs no approval.
+   A config with no `keep` and no `scan` needs no approval.
 4. Restore and check reports go to stderr; stdout carries only the restored text (for `-`). `restore -`
    refuses (exit 2) when stdout is not a terminal: restore is for the person, not the agent.
-5. `approve` asks `Keep <column> in <match>? Type yes:` per keep. `approval.json`:
-   `{"version":1,"config_sha256":"...","approved_at":"RFC3339","keeps":["<match>:<column>"]}`.
+5. `approve` asks `Keep <column> in <match>? ... Type yes:` per keep and `Scan <column> in <match>?
+   It is free text: names Standin does not know stay in ... Type yes:` per scan, then one final yes.
+   `approval.json`: `{"version":1,"config_sha256":"...","approved_at":"RFC3339",
+   "keeps":["<match>:<column>"],"scans":["<match>:<column>"]}`.
 6. The private folder hash uses the absolute path with symlinks resolved.
 7. No `standin.config.json`: `scrub` refuses (exit 2), "run standin shape, then write a config".
 8. Free-text rule: average over non-empty cells.
-9. A file name that looks like data: `shape` writes `file_n` and says rename; `scrub` refuses it (exit 2).
-   Messages never print such a name.
+9. A file name that looks like data (any folder, or the full file name with or without its extension, or
+   any dot-separated part): `shape` writes `file_n` and says rename; `scrub` refuses it (exit 2).
+   Messages, errors (OS errors are reduced to their cause, without the path), logs and the report never
+   print such a name; the report names only common extensions, others as `(other)`.
 10. Binary content (NUL bytes, `PK`/`%PDF` magic) is refused whatever the extension.
 11. JSON records may differ in keys; a missing key stays missing.
 12. Word boundaries in the scan are Unicode-aware (Go's `\b` is ASCII-only: `Renée` would be missed).
+13. CSV/TSV with lone carriage returns (old Mac line endings) is refused: "save it with normal line
+    endings".
+14. Headers and JSON keys: shape and scrub use one check (`scan.LooksLikeDataName`: the whole name, then
+    each dot-separated part). Names caught: two capitalised words incl. `O'Brien`/`McNab`/hyphens, two
+    all-caps words, two lower-case words (`lee_pip`), unless both are common header words; a common word
+    followed by an uncommon capitalised word (`Bill Gatesby`). Scrub also swaps a header equal to a value
+    already in the mapping.
 
 ## Order
 

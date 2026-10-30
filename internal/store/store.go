@@ -77,10 +77,10 @@ func Inside(path, dir string) bool {
 // Ensure makes the private folder (0700) and its parents if needed, and tightens it if it is open.
 func Ensure(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fail.New("private", "I could not make the private folder %s: %v", dir, err)
+		return fail.New("private", "I could not make the private folder %s: %s", dir, fail.Reason(err))
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
-		return fail.New("private", "I could not lock the private folder %s: %v", dir, err)
+		return fail.New("private", "I could not lock the private folder %s: %s", dir, fail.Reason(err))
 	}
 	return nil
 }
@@ -122,12 +122,12 @@ func WriteAll(outs []Out) error {
 		dir := filepath.Dir(o.Path)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			cleanup()
-			return fail.New("write", "I could not make the folder %s: %v. I wrote nothing.", dir, err)
+			return fail.New("write", "I could not make a folder for the output (%s). I wrote nothing.", fail.Reason(err))
 		}
 		f, err := os.CreateTemp(dir, ".standin-tmp-*")
 		if err != nil {
 			cleanup()
-			return fail.New("write", "I could not write in %s: %v. I wrote nothing.", dir, err)
+			return fail.New("write", "I could not write an output file (%s). I wrote nothing.", fail.Reason(err))
 		}
 		s := staged{out: o, tmp: f.Name()}
 		st = append(st, s)
@@ -143,7 +143,7 @@ func WriteAll(outs []Out) error {
 		}
 		if err != nil {
 			cleanup()
-			return fail.New("write", "I could not write %s: %v. I wrote nothing.", o.Path, err)
+			return fail.New("write", "I could not write an output file (%s). I wrote nothing.", fail.Reason(err))
 		}
 		if old, err := os.ReadFile(o.Path); err == nil {
 			st[len(st)-1].backup, st[len(st)-1].existed = old, true
@@ -165,7 +165,7 @@ func WriteAll(outs []Out) error {
 			for j := i; j < len(st); j++ {
 				os.Remove(st[j].tmp)
 			}
-			return fail.New("write", "I could not save %s: %v. I put back what I had changed.", st[i].out.Path, err)
+			return fail.New("write", "I could not save an output file (%s). I put back what I had changed.", fail.Reason(err))
 		}
 		st[i].tmp = ""
 	}
@@ -178,6 +178,7 @@ type Approval struct {
 	ConfigSHA256 string   `json:"config_sha256"`
 	ApprovedAt   string   `json:"approved_at"`
 	Keeps        []string `json:"keeps"`
+	Scans        []string `json:"scans,omitempty"`
 }
 
 // LoadApproval reads approval.json. A missing file gives nil, nil.
@@ -187,7 +188,7 @@ func LoadApproval(dir string) (*Approval, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fail.New("approval-read", "I could not read the approval file: %v", err)
+		return nil, fail.New("approval-read", "I could not read the approval file (%s).", fail.Reason(err))
 	}
 	var a Approval
 	if err := json.Unmarshal(b, &a); err != nil || a.Version != 1 || a.ConfigSHA256 == "" {

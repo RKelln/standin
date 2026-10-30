@@ -156,3 +156,12 @@ func TestErrorsHoldNoValues(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestLoneCRRefused(t *testing.T) {
+	if _, err := Parse(CSV, []byte("a,b\r1,2\r")); err == nil || !strings.Contains(err.Error(), "normal line endings") {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := Parse(CSV, []byte("a,b\r\n1,2\r\n")); err != nil {
+		t.Fatalf("CRLF refused: %v", err)
+	}
+}

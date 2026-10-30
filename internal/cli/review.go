@@ -78,12 +78,12 @@ func runReview(c *ctx) error {
 	}
 	fmt.Fprintln(c.env.Stdout)
 	switch {
-	case !hasKeeps(cfg):
-		fmt.Fprintln(c.env.Stdout, "This config keeps no real values, so it needs no approval.")
+	case !needsApproval(cfg):
+		fmt.Fprintln(c.env.Stdout, "This config has no keep or scan, so it needs no approval.")
 	case approved:
-		fmt.Fprintln(c.env.Stdout, "Approved: yes. The keeps above will be used.")
+		fmt.Fprintln(c.env.Stdout, "Approved: yes. The keeps and scans above will be used.")
 	default:
-		fmt.Fprintf(c.env.Stdout, "Approved: no. %s Until you run `standin approve`, keeps are tokenized.\n", why)
+		fmt.Fprintf(c.env.Stdout, "Approved: no. %s Until you run `standin approve`, keeps and scans are tokenized.\n", why)
 		c.warnings++
 	}
 	return nil
@@ -115,19 +115,29 @@ func runApprove(c *ctx) error {
 		a := strings.ToLower(strings.TrimSpace(line))
 		return a == "yes" || a == "y", nil
 	}
-	var keeps []string
+	var keeps, scans []string
 	for _, r := range rowsKeepsFirst(cfg) {
-		if r.col.Action != config.Keep {
+		var q, verb string
+		switch r.col.Action {
+		case config.Keep:
+			q, verb = fmt.Sprintf("Keep %s in %s? The AI will see these real values.", r.column, r.match), "keeping"
+		case config.Scan:
+			q, verb = fmt.Sprintf("Scan %s in %s? It is free text: names Standin does not know stay in, and the AI will see them.", r.column, r.match), "scanning"
+		default:
 			continue
 		}
-		ok, err := ask(fmt.Sprintf("Keep %s in %s? The AI will see these real values.", r.column, r.match))
+		ok, err := ask(q)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			return fail.New("not-approved", "You did not approve keeping %s in %s, so I approved nothing. Change it in %s (for example to tokenize), then run approve again.", r.column, r.match, config.FileName)
+			return fail.New("not-approved", "You did not approve %s %s in %s, so I approved nothing. Change it in %s (for example to tokenize or drop), then run approve again.", verb, r.column, r.match, config.FileName)
 		}
-		keeps = append(keeps, r.match+":"+r.column)
+		if r.col.Action == config.Keep {
+			keeps = append(keeps, r.match+":"+r.column)
+		} else {
+			scans = append(scans, r.match+":"+r.column)
+		}
 	}
 	ok, err := ask("Use this config for scrub?")
 	if err != nil {
@@ -139,7 +149,7 @@ func runApprove(c *ctx) error {
 	if err := store.Ensure(privDir); err != nil {
 		return err
 	}
-	a := store.Approval{Version: 1, ConfigSHA256: cfg.Hash, ApprovedAt: time.Now().UTC().Format(time.RFC3339), Keeps: keeps}
+	a := store.Approval{Version: 1, ConfigSHA256: cfg.Hash, ApprovedAt: time.Now().UTC().Format(time.RFC3339), Keeps: keeps, Scans: scans}
 	if a.Keeps == nil {
 		a.Keeps = []string{}
 	}

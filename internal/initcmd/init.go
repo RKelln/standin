@@ -183,8 +183,12 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fmt.Fprintln(stdout, "Never give that folder, or the mapping.json in it, to an AI.")
 	fmt.Fprintln(stdout, "Next: put your real files in raw/, then run: standin shape raw/<file>")
 	if harnesses["claude"] {
-		fmt.Fprintln(stdout, "Claude Code: restart it in this folder so it loads the hooks. Hooks are a safety net, not a wall:")
-		fmt.Fprintln(stdout, "  a shell command or script can still read raw/. Turning on Claude Code's sandbox makes this stronger.")
+		fmt.Fprintln(stdout, "Claude Code: restart it in this folder so it loads the hooks.")
+		fmt.Fprintln(stdout, "Be aware: the shell check is only a guess from the command text. A script or a clever command")
+		fmt.Fprintln(stdout, "  can still read raw/. The hooks are a safety net, not a wall.")
+		fmt.Fprintln(stdout, "We recommend turning on Claude Code's sandbox, which blocks every program from raw/ and restored/:")
+		fmt.Fprintln(stdout, `  add "sandbox": {"enabled": true, "allowUnsandboxedCommands": false} to .claude/settings.json.`)
+		fmt.Fprintln(stdout, "  It works on macOS, Linux (needs bubblewrap and socat) and WSL2, not on plain Windows.")
 	}
 	if harnesses["codex"] || harnesses["opencode"] {
 		fmt.Fprintln(stdout, "Codex and OpenCode notes are in standin-harness/. They are untested; read them before you use them.")

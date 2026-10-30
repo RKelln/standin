@@ -61,7 +61,7 @@ func Load(project string) (c *Config, exists bool, err error) {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fail.New("config-read", "I could not read %s: %v", FileName, err)
+		return nil, false, fail.New("config-read", "I could not read %s (%s).", FileName, fail.Reason(err))
 	}
 	c, err = Parse(b)
 	return c, true, err
@@ -134,12 +134,22 @@ func checkColumn(name string, col Column) error {
 		if name == "(key)" && col.Category != "KEY" {
 			return errors.New(`the keys of an object of records use category "KEY".`)
 		}
-	case Keep, Drop, Scan:
+	case Drop:
+		if col.Category != "" && !mapping.ValidCategory(col.Category) {
+			return errors.New(`"category" must be one of ` + strings.Join(mapping.Categories, ", ") + `.`)
+		}
+		if name == "(key)" {
+			return errors.New(`the keys of an object of records can only be "keep" or "tokenize".`)
+		}
+	case Keep, Scan:
 		if col.Category != "" {
-			return errors.New(`"category" only goes with "tokenize".`)
+			return errors.New(`"category" only goes with "tokenize" or "drop".`)
 		}
 		if name == "(key)" && col.Action != Keep {
 			return errors.New(`the keys of an object of records can only be "keep" or "tokenize".`)
+		}
+		if _, ok := ColumnRef(name); ok {
+			return errors.New(`a column named by position ([COLUMN_n]) can only be "tokenize" or "drop", because the position could change in the next export. Rename the header in the raw file if you need to keep it.`)
 		}
 	case "":
 		return errors.New(`it has no "action" (tokenize, keep, drop or scan).`)

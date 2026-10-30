@@ -166,8 +166,9 @@ func TestRoundTripInvoicesAndBank(t *testing.T) {
 	if rc.code != 1 {
 		t.Errorf("check on a raw file: want exit 1 (real values found)\n%s", rc)
 	}
-	if !tokenRE.MatchString(rc.stdout + rc.stderr) {
-		t.Errorf("check on a raw file should name stand-ins it found\n%s", rc)
+	// Off a terminal (an agent), check gives one bit: no stand-in names, so guesses cannot be tested.
+	if tokenRE.MatchString(rc.stdout + rc.stderr) {
+		t.Errorf("check off a terminal must not name stand-ins\n%s", rc)
 	}
 	rc = p.run([]byte("Please call "+rawInv[0]["Customer"]+" today.\n"), "check", "-")
 	if rc.code != 1 {

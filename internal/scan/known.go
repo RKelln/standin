@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/RKelln/standin/internal/mapping"
@@ -49,11 +50,12 @@ func NewKnown(m *mapping.Mapping) *Known {
 
 // phrase turns a normalised value into a pattern that allows any run of spaces between words.
 func phrase(key string) string {
-	words := strings.Fields(key)
+	words := strings.FieldsFunc(key, func(r rune) bool { return unicode.IsSpace(r) || unicode.Is(unicode.Zs, r) })
 	for i, w := range words {
 		words[i] = regexp.QuoteMeta(w)
 	}
-	return strings.Join(words, `\s+`)
+	// Any run of spaces, including no-break and other Unicode spaces.
+	return strings.Join(words, `[\s\p{Z}]+`)
 }
 
 // boundaryOK checks the whole-word rule, in any script. A value that starts

@@ -279,15 +279,16 @@ func (c *ctx) rel(abs string) (string, bool) {
 	return filepath.ToSlash(r), true
 }
 
-// dataLikeName reports whether any part of a path (inside raw/) looks like private data.
-func dataLikeName(relToRaw string) bool {
-	parts := strings.Split(relToRaw, "/")
-	for i, p := range parts {
-		if i == len(parts)-1 {
-			p = strings.TrimSuffix(p, filepath.Ext(p))
-		}
-		if _, ok := scan.LooksLikeData(p); ok {
-			return true
+// dataLikeName reports whether any part of a path looks like private data.
+// Each folder and the full file name are checked, extension included (a
+// name can hide in it: "statement.Zelda Quorn"), with and without the
+// extension, and each dot-separated part.
+func dataLikeName(rel string) bool {
+	for _, p := range strings.Split(rel, "/") {
+		for _, s := range []string{p, strings.TrimSuffix(p, filepath.Ext(p))} {
+			if _, ok := scan.LooksLikeDataName(s); ok {
+				return true
+			}
 		}
 	}
 	return false

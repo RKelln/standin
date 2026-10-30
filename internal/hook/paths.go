@@ -108,6 +108,7 @@ func (g Guard) restored() string { return filepath.Join(g.Project, RestoredDir) 
 
 // abs makes p absolute against cwd (or the project) and cleans it.
 func (g Guard) abs(p, cwd string) string {
+	p = expandHome(p)
 	if !filepath.IsAbs(p) {
 		base := cwd
 		if base == "" {
@@ -246,4 +247,20 @@ func (g Guard) ScrubbedFor(p, cwd string) (string, bool) {
 		}
 	}
 	return filepath.Join(g.Project, ScrubbedDir, rel), true
+}
+
+// expandHome turns a leading ~, $HOME or ${HOME} into the home folder, as a
+// shell or a harness might, so a home-relative path is checked like any other.
+func expandHome(p string) string {
+	for _, pre := range []string{"~", "$HOME", "${HOME}"} {
+		if p != pre && !strings.HasPrefix(p, pre+"/") && !strings.HasPrefix(p, pre+`\`) {
+			continue
+		}
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return p
+		}
+		return filepath.Join(home, p[len(pre):])
+	}
+	return p
 }

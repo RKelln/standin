@@ -5,7 +5,12 @@
 // value from a data file.
 package fail
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+)
 
 // Error is a refusal: Standin stops, writes nothing, and exits 2.
 type Error struct {
@@ -26,4 +31,21 @@ func Code(err error) string {
 		return e.Code
 	}
 	return "error"
+}
+
+// Reason gives the cause of an operating-system error without the file path
+// in it (a path may itself be private, like a file named after a person).
+func Reason(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	var le *os.LinkError
+	if errors.As(err, &le) {
+		return le.Err.Error()
+	}
+	if err == nil {
+		return ""
+	}
+	return "an error from the system"
 }
