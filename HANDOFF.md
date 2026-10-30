@@ -22,7 +22,10 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 - Landed and pushed: research, release pipeline (minus workflows, see below), fixtures + e2e, core CLI,
   hooks + init + skill. `go test ./...` green. Real Claude Code smoke test: `sh tools/claude_smoke.sh`
   (4/4 on 2.1.314). Success check 3 passed (DESIGN decision 23).
-- In flight: track V fresh review (findings, no fixes). Then fixes, then v0.1.0.
+- Track V review done: 16 findings (4 high). Fix decisions are DESIGN 24-31. Fixes in flight: the hook
+  builder (internal/hook, initcmd, skill) and the core builder (cli + core packages), in parallel.
+  Then: rerun `go test ./...`, `sh tools/claude_smoke.sh`, then tag v0.1.0 and publish with a local
+  `goreleaser release` (the token cannot push workflows, so CI is not on GitHub yet).
 
 ## Next (orchestrator)
 
