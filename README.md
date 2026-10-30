@@ -2,35 +2,66 @@
 
 Let an AI work on your files without seeing your private data.
 
-Standin swaps the sensitive values in a file for stand-ins (`Customer_1`, `[EMAIL_2]`), keeps a private
-table that maps them back, and later puts the real values back into whatever the AI wrote. The AI sees the
-shape of your data and the stand-ins. The real values never leave your machine.
+Standin swaps the private values in a file for **stand-ins**: made-up labels like `[PERSON_1]` or
+`[EMAIL_2]`. It keeps a private list, the **mapping**, that links each stand-in to its real value, and later
+puts the real values back into whatever the AI wrote. The same value always gets the same stand-in, so the
+AI can still match a payment to an invoice. The real values stay on your computer.
 
 It is made for small businesses and non-profits who want to use an AI coding agent (Claude Code and
-similar) on their own records: invoices, bank exports, customer lists, email exports. It is the tool behind
-the "share safely" step of [Get2Know](https://github.com/RKelln/get2know).
+similar) on their own records: invoices, bank exports, customer lists. It is the tool behind the "share
+safely" step of [Get2Know](https://github.com/RKelln/get2know).
 
-**Status:** design only. Read `docs/DESIGN.md`.
+**Status:** v0.1.0, early. Tested on invented data and in Claude Code 2.1.314 on Linux. Not yet tested by
+real users or on real exports. See "What it misses" below.
 
-## How it works, in five steps
+## Install
 
-1. **Shape.** Standin reads a CSV or JSON file and writes a *shape file*: headers kept, every value replaced
-   by a short description of it ("email-like, 22 chars", "date YYYY-MM-DD", "amount, 2 decimals"), plus a
-   summary per column. No real value is in it.
-2. **Propose.** The AI reads only the shape file and proposes a *config*: for each column, tokenize, keep,
-   or drop, with a reason.
-3. **Review.** The person reads the config (a plain list) and approves it. Anything not marked "keep" is
-   tokenized by default.
-4. **Scrub.** Standin applies the config, writes the scrubbed copy and a private mapping table, and shows
-   three rows before and after.
-5. **Restore.** The AI works on the scrubbed copy. Text it writes goes back through Standin, which swaps
-   the stand-ins for the real values locally.
+macOS and Linux:
 
-## What it is not
+```sh
+curl -fsSL https://raw.githubusercontent.com/RKelln/standin/main/install.sh | sh
+```
 
-- Not a guarantee. It reduces what an AI sees; it does not make data safe to share with anyone.
-- Not a detector of every private thing. It does not guess names inside free text. It says so, and asks a
-  person.
-- Not for files it cannot read (PDF, images, Word). It refuses them and says to redact by hand.
+Windows (PowerShell):
 
-Code is MIT. Documentation is CC BY 4.0. (Proposed; confirm before the first release.)
+```powershell
+irm https://raw.githubusercontent.com/RKelln/standin/main/install.ps1 | iex
+```
+
+One program, no other software needed. It never uses the network.
+
+## How it works
+
+```sh
+standin init                 # makes raw/ shape/ scrubbed/ restored/, sets up Claude Code's guard hooks
+# put your real files in raw/
+standin shape                # describes each file for the AI, with no real values
+# ask the AI to read shape/ and write standin.config.json
+standin review               # read the rules as a table
+standin approve              # you say yes to each column the AI will see for real
+standin scrub                # writes scrubbed/ for the AI; the mapping goes to ~/.standin
+# the AI works on scrubbed/ and writes its answer with stand-ins
+standin restore answer.md    # puts the real values back, into restored/, for you
+```
+
+- **Default-deny:** every value becomes a stand-in unless you approved `keep` for its column.
+- **Fail closed:** if Standin cannot read a file, or is unsure, it writes nothing and says why.
+- **The mapping is the secret.** It lives outside the project folder. Never give it to an AI.
+- `standin check FILE` looks for real values and private patterns, and names the stand-in, never the value.
+- `standin report` prints an issue report with no data in it. Agents should use it to report problems.
+
+Files in: CSV, TSV and JSON (UTF-8, UTF-16, Windows-1252). Not yet: Excel, OFX/QFX, PDF. Save as CSV first.
+
+## What it misses
+
+- **Names inside free text** (notes, bank descriptions) are swapped only if Standin already knows them
+  from a tokenized column. Other names stay. Read scan columns before you share them.
+- **Patterns:** stand-ins still show which rows share a value, and how often.
+- **Combinations** (a postal code plus a job plus a date) can still point to one person.
+- **The guard hooks are a safety net, not a wall.** A shell script can still read `raw/`. Hooks do not see
+  files you mention with `@`, pasted text, or `CLAUDE.md`. Codex and OpenCode notes are untested.
+- The AI provider still gets everything you type, and the scrubbed files.
+
+Read `docs/DESIGN.md` for the design and its decisions, and `skill/standin/SKILL.md` for agent instructions.
+
+MIT licence, for code and docs.
