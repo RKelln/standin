@@ -19,12 +19,13 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 
 ## In flight (background agents, started 2026-10-30; none committed)
 
-- R research: `docs/research/prior-art.md`. Prior art verified at source; plus hooks (Claude Code
-  PreToolUse `updatedInput` redirect of raw reads to scrubbed copies? PostToolUse output replacement for
-  built-in tools? crash = fail open or closed?), Codex/OpenCode, Gatekeeper, QuickBooks/Xero/Wave/OFX formats.
+- R research: DONE, committed. Decisions recorded in `docs/DESIGN.md`; A and C told about the contract
+  change (keep every spelling; refuse stand-in-shaped input; strict restore).
+- D release: DONE, committed (goreleaser, installers, CI untested until code exists).
+- B hooks/init/skill: running. New packages only (`internal/hook`, `internal/initcmd`, `skill/`);
+  orchestrator wires them into `cmd/standin` after A lands.
 - A core CLI: `cmd/standin`, `internal/...`, unit tests (no `hook`/`init` yet).
 - C fixtures + e2e: `testdata/`, `tools/make_fixtures.py` (uv), `e2e/` (skips if CLI not built).
-- D release: `.goreleaser.yaml`, `install.sh`, `install.ps1`, `Makefile`, `.github/`, `LICENSE`, `.gitignore`.
 
 ## Next (orchestrator)
 
@@ -37,3 +38,8 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 3. Track V: a fresh review agent (leaks, fail-closed, default-deny, cross-track drift), then fixes.
 4. Success check 3 (a small model proposes a config from shape only); record results here.
 5. Tag v0.1.0; Ryan tests curl install on the Mac mini. Update README status.
+
+## Blocked on Ryan
+
+- Push refused: the GitHub token lacks `workflow` scope (`.github/workflows/`). Fix: `gh auth refresh -s workflow`.
+- Windows Smart App Control may block unsigned binaries; paid code signing is Ryan's call.

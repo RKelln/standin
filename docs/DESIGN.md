@@ -191,4 +191,40 @@ round-trip exists, so this is worth building.
 
 ## Decisions
 
-(The working agent records decisions and why here.)
+(The working agent records decisions and why here. Evidence: `docs/research/prior-art.md`. The contract
+is in `docs/PLAN.md`; where this file and PLAN differ, PLAN wins.)
+
+1. **A CLI, not an HTML page** (Ryan, 2026-10-30). Agent harnesses call it from hooks; setup is hands-on.
+   Sections 4, 7 and success checks 7-8 describe the old page; the CLI keeps the same flow (shape, config,
+   approve, scrub, restore). Check 7 becomes "no network package is linked" (a test on `go list -deps`).
+2. **Go, standard library only, one static binary.** Easy cross-builds for macOS, Windows and Linux; no
+   runtime to install. Rust needs a toolchain we do not have here; Python may be an installer stub on a
+   locked-down laptop. Release pipeline copied from Ryan's agentmap.
+3. **Name `standin`, textmark `[standin]`; MIT for code and docs** (Ryan).
+4. **Stand-in format `[CATEGORY_N]`.** One shape for every category. The closing bracket means
+   `[PERSON_1]` cannot match inside `[PERSON_12]`, and a stand-in is plainly not a real value.
+5. **The secret lives outside the project** (`~/.standin/projects/...`, folders 0700, files 0600), so
+   tools working in the project folder do not see it. Every command prints where it is.
+6. **Normalise for the key, keep every spelling.** `Ann Lee` and `ann lee ` share one stand-in, so files
+   still join up. The mapping keeps all spellings; restore writes the first and says how many had more.
+   (Research finding 9: a single spelling would make exact round-trips fail.)
+7. **Refuse data that already looks like a stand-in.** Otherwise restore turns it into a real value (seen
+   in PrivAiTe).
+8. **Restore is strict.** Exact stand-ins only, longest first; near-misses are reported, never changed.
+   Fuzzy matching (LLM Guard allows 3 edits) would swap people.
+9. **Coarse shape bands** (open question 4). Counts and lengths as bands; nothing below 5 exact; no real
+   values. Shapes are for setup only; day to day the agent sees scrubbed files only.
+10. **Known-values scan in the MVP.** Bank descriptions and notes hold customer names; replacing every
+    value already in the mapping catches many. Names not in the mapping stay, and the output says so.
+11. **Nested JSON in the MVP** (open question 3): dotted paths and `[]`. Object-of-records keys are data.
+12. **Restore works on files and stdin** (open question 6), writing to `restored/` for the person.
+13. **The hook is the main entry point, not a later phase** (changes 6.5). Agent deny settings alone do not
+    stop shell reads. Claude Code hooks fail open by default, so every Standin hook sets
+    `"onFailure": "block"`, uses exec form and exits 2 to block; `standin init` refuses older Claude Code
+    versions that lack it. Bash reads stay a known gap except under a sandbox; say so.
+14. **Accounting and bank exports before xlsx** (Ryan). After CSV and JSON: OFX/QFX/QBO (SGML 1.x and
+    XML 2.x), then QuickBooks exports. Preamble rows above a bank CSV header are data and default-deny.
+15. **Installs by `curl`/`irm`, unsigned for now.** A browser download on macOS is quarantined; the curl
+    path is not. Windows Smart App Control may block unsigned binaries: open item for Ryan (paid signing).
+16. **Agents report issues without data.** `standin report` prints version, OS, file kinds and shapes,
+    never values, so a leak or a format gap gets fixed once.

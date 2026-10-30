@@ -1,0 +1,39 @@
+version: "2"
+
+linters:
+  enable:
+    # Already on by default: errcheck, govet, staticcheck, unused, ineffassign
+    - misspell
+    - goconst
+    - unconvert
+    - unparam
+    - errname
+    - nilerr
+    - revive
+    - prealloc
+    - gocritic
+    - errorlint
+
+  settings:
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: blank-imports
+        - name: error-return
+        - name: error-strings
+        - name: increment-decrement
+        - name: var-naming
+        - name: unreachable-code
+
+  exclusions:
+    rules:
+      - linters: [unparam, goconst]
+        path: _test\.go
+
+formatters:
+  enable:
+    - gofmt

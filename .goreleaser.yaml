@@ -1,0 +1,51 @@
+# GoReleaser config for standin. Run by .github/workflows/release.yml on a v* tag.
+# Later: Homebrew tap (brews:) and Scoop bucket (scoops:), as in agentmap. Not needed for the
+# workshop; install.sh / install.ps1 are the supported install paths for now.
+version: 2
+
+project_name: standin
+
+builds:
+  - main: ./cmd/standin
+    binary: standin
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'

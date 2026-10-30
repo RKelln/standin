@@ -88,8 +88,12 @@ ignored) and it warns, exit 1. Changing the config voids the approval.
   refuse). Unmentioned columns use `VALUE`.
 - Key: category + normalised value (lowercase, trim, collapse inner whitespace, strip trailing `.,;:`).
   The same normalised value always gets the same stand-in, across all files in a project.
-- Restore puts back the first spelling seen.
+- The mapping keeps every original spelling per stand-in (first one first). Restore puts back the first
+  spelling and reports, by stand-in name, how many had more than one (exit 1).
 - Empty values stay empty (not tokenized).
+- `scrub` refuses (exit 2) any raw cell, header or JSON key that already contains stand-in-shaped text;
+  the message names file, row and column, never the value. (Otherwise restore would turn it into a real
+  value.)
 
 ### Config `standin.config.json`
 
@@ -137,7 +141,7 @@ shape file uses `file_n` and says to rename the raw file.
 
 ### Restore
 
-Replaces every exact stand-in it knows. Reports (by stand-in, not value): unknown stand-ins
+Strict: replaces every exact stand-in it knows, longest first, never fuzzy (`[PERSON_1]` vs `[PERSON_7]` is one edit). Reports (by stand-in, not value): unknown stand-ins
 (`[PERSON_99]`), and near-misses it did not change (`[person_1]`, `PERSON_1`, `[PERSON 1]`, `Person 1`).
 Exit 1 if any.
 
