@@ -238,3 +238,14 @@ is in `docs/PLAN.md`; where this file and PLAN differ, PLAN wins.)
 20. **`init --no-version-check`** is an escape hatch for unreadable `claude --version` output; it exits 1
     with a loud warning. `init` advises, but does not turn on, Claude Code's sandbox (session-wide;
     needs bubblewrap on Linux).
+21. **Tested in real Claude Code 2.1.314 (2026-10-30, `tools/claude_smoke.sh`):** `onFailure: "block"`
+    blocks a broken hook; the Bash hook blocks `cat raw/...`; a prompt holding a real value is not sent;
+    the Read redirect to `scrubbed/` works. But the `Read(./raw/**)` deny rule fires *before* the hook, so
+    with it in place a raw read is denied, not redirected. We keep the deny rule: it still holds if hooks
+    are turned off, and the agent can read `scrubbed/` directly. `AGENTS.md` alone already made a small
+    model refuse to read `raw/`.
+22. **Only `init` may run another program** (`claude --version`). A test checks no other package links
+    `os/exec`, and that no network package is linked at all.
+23. **Success check 3 passed (2026-10-30):** a small model (Haiku) given only the two shape files wrote a
+    config that tokenized or dropped every private column (names, emails, phones, accounts), scanned the
+    free text, and kept only dates, amounts and status.

@@ -17,15 +17,12 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 - Shapes are setup-only; day to day the agent sees scrubbed files only. Harness deny-configs are
   "not foolproof but help": ship them for Claude Code, Codex, OpenCode.
 
-## In flight (background agents, started 2026-10-30; none committed)
+## Status (2026-10-30 evening)
 
-- R research: DONE, committed. Decisions recorded in `docs/DESIGN.md`; A and C told about the contract
-  change (keep every spelling; refuse stand-in-shaped input; strict restore).
-- D release: DONE, committed (goreleaser, installers, CI untested until code exists).
-- B hooks/init/skill: running. New packages only (`internal/hook`, `internal/initcmd`, `skill/`);
-  orchestrator wires them into `cmd/standin` after A lands.
-- A core CLI: `cmd/standin`, `internal/...`, unit tests (no `hook`/`init` yet).
-- C fixtures + e2e: `testdata/`, `tools/make_fixtures.py` (uv), `e2e/` (skips if CLI not built).
+- Landed and pushed: research, release pipeline (minus workflows, see below), fixtures + e2e, core CLI,
+  hooks + init + skill. `go test ./...` green. Real Claude Code smoke test: `sh tools/claude_smoke.sh`
+  (4/4 on 2.1.314). Success check 3 passed (DESIGN decision 23).
+- In flight: track V fresh review (findings, no fixes). Then fixes, then v0.1.0.
 
 ## Next (orchestrator)
 
