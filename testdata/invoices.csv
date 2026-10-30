@@ -1,0 +1,41 @@
+Invoice,Date,Customer,Email,Phone,Amount,Status,Notes
+INV-1001,2026-01-05,Mei-Ling Chen,mei-ling.chen@example.com,416-555-0176,1399.70,Paid,
+INV-1002,2026-01-11,Björn Åkesson,bjorn.akesson@example.com,604-555-0144,553.62,Overdue,
+INV-1003,2026-01-16,Kalani Kahale,kalani.kahale@example.com,312-555-0192,2744.10,Paid,Net 30
+INV-1004,2026-01-21,Zoë Hartmann,zoe.hartmann@example.com,416-555-0113,4248.66,Overdue,Zoë Hartmann asked to split the payment. Call 416-555-0113
+INV-1005,2026-01-26,Thandiwe Mokoena,thandiwe.mokoena@example.com,416-555-0130,917.35,Paid,
+INV-1006,2026-02-04,Renée Dubé,renee.dube@example.org,613-555-0181,2973.17,Open,Spoke with Renée about the deposit
+INV-1007,2026-02-09,Amara Okafor,amara.okafor@example.com,514-555-0179,2915.92,Paid,Reminder sent to Amara Okafor
+INV-1008,2026-02-11,Noémie Côté,noemie.cote@example.org,416-555-0184,2985.91,Paid,Noémie Côté asked to split the payment. Call 416-555-0184
+INV-1009,2026-02-17,Aisha Al-Farsi,aisha.al-farsi@example.com,613-555-0166,2447.29,Overdue,
+INV-1010,2026-02-23,Søren Lindqvist,soren.lindqvist@example.com,415-555-0154,4661.77,Overdue,
+INV-1011,2026-02-26,Fatima Zahra Benali,fatimazahra.benali@example.com,416-555-0125,1607.54,Paid,Reminder sent to Fatima Zahra Benali
+INV-1012,2026-02-27,Aroha Ngata,aroha.ngata@example.org,403-555-0153,3160.71,Overdue,Left a voicemail at 403-555-0153
+INV-1013,2026-02-28,Dmitri Volkov,dmitri.volkov@example.com,212-555-0146,4027.04,Paid,
+INV-1014,2026-03-01,Lucía Fernández,lucia.fernandez@example.org,312-555-0143,1705.36,Paid,Left a voicemail at 312-555-0143
+INV-1015,2026-03-05,Ravi Deshpande,ravi.deshpande@example.org,604-555-0120,2188.62,Open,
+INV-1016,2026-03-06,Priya Raghunathan,priya.raghunathan@example.com,403-555-0162,1232.09,Open,
+INV-1017,2026-03-10,Liam O'Connor,liam.oconnor@example.org,416-555-0114,4235.49,Paid,Paid by e-transfer
+INV-1018,2026-03-12,Hamid Rahimi,hamid.rahimi@example.org,604-555-0128,1398.62,Open,
+INV-1019,2026-03-18,Oluwaseun Adeyemi,oluwaseun.adeyemi@example.com,416-555-0185,943.86,Paid,
+INV-1020,2026-03-21,Kenji Watanabe,kenji.watanabe@example.com,416-555-0138,3764.43,Paid,Reminder sent to Kenji Watanabe
+INV-1021,2026-03-24,Mateo Rossi,mateo.rossi@example.org,415-555-0163,4773.18,Overdue,
+INV-1022,2026-03-26,Ifeoma Nwosu,ifeoma.nwosu@example.com,514-555-0195,2618.39,Overdue,
+INV-1023,2026-03-27,José Martínez,jose.martinez@example.com,415-555-0152,1600.34,Open,
+INV-1024,2026-04-04,François Gagné,francois.gagne@example.com,613-555-0187,2934.33,Paid,Sent receipt to francois.gagne@example.com
+INV-1025,2026-04-08,Fatima Zahra Benali,fatimazahra.benali@example.com,416-555-0125,3754.90,Paid,Sent receipt to fatimazahra.benali@example.com
+INV-1026,2026-04-11,Aisha Al-Farsi,aisha.al-farsi@example.com,613-555-0166,2940.05,Paid,Paid by e-transfer
+INV-1027,2026-04-12,Amara Okafor,amara.okafor@example.com,514-555-0179,2188.86,Paid,Left a voicemail at 514-555-0179
+INV-1028,2026-04-18,Kalani Kahale,kalani.kahale@example.com,312-555-0192,2057.19,Paid,
+INV-1029,2026-04-23,Kenji Watanabe,kenji.watanabe@example.com,416-555-0138,1258.08,Paid,
+INV-1030,2026-04-26,fatima zahra benali,fatimazahra.benali@example.com,416-555-0125,2910.91,Paid,Sent receipt to fatimazahra.benali@example.com
+INV-1031,2026-05-03,Mei-Ling Chen,mei-ling.chen@example.com,416-555-0176,1864.73,Paid,Mei-Ling Chen asked to split the payment. Call 416-555-0176
+INV-1032,2026-05-05,Thandiwe Mokoena,thandiwe.mokoena@example.com,416-555-0130,1364.99,Paid,Gave Thandiwe Mokoena a 5% discount for paying early
+INV-1033,2026-05-09,Priya Raghunathan,priya.raghunathan@example.com,403-555-0162,591.05,Paid,Sent receipt to priya.raghunathan@example.com
+INV-1034,2026-05-10,Amara Okafor,amara.okafor@example.com,514-555-0179,1883.90,Paid,Reminder sent to Amara Okafor
+INV-1035,2026-05-12,  Kenji  Watanabe ,kenji.watanabe@example.com,416-555-0138,1389.72,Paid,Sent receipt to kenji.watanabe@example.com
+INV-1036,2026-05-14,Amara Okafor,amara.okafor@example.com,514-555-0179,1285.20,Paid,Gave Amara Okafor a 5% discount for paying early
+INV-1037,2026-05-19,François Gagné,francois.gagne@example.com,613-555-0187,2415.72,Paid,
+INV-1038,2026-05-20,Renée Dubé,renee.dube@example.org,613-555-0181,4533.15,Paid,
+INV-1039,2026-05-25,Fatima Zahra Benali,fatimazahra.benali@example.com,416-555-0125,2946.60,Paid,Fatima Zahra Benali asked to split the payment. Call 416-555-0125
+INV-1040,2026-06-02,Liam O'Connor,liam.oconnor@example.org,416-555-0114,2078.77,Overdue,Paid by e-transfer

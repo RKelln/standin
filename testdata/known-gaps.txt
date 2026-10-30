@@ -1,0 +1,4 @@
+# Sensitive text the contract lets through on purpose (names not in the mapping).
+# Tests log whether these leak; they do not fail on them.
+Renée
+J MARTINEZ

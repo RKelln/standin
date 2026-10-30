@@ -41,5 +41,5 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 
 ## Blocked on Ryan
 
-- Push refused: the GitHub token lacks `workflow` scope (`.github/workflows/`). Fix: `gh auth refresh -s workflow`.
+- The PAT cannot push workflows. CI and release workflows are on the local branch `ci-workflows` (not pushed); Ryan merges and pushes them. Until then, releases are built locally (`make` cross-builds plus `gh release`).
 - Windows Smart App Control may block unsigned binaries; paid code signing is Ryan's call.

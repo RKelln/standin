@@ -1,0 +1,62 @@
+{
+  "Amara Okafor": {
+    "email": "amara.okafor@example.com",
+    "city": "Toronto",
+    "balance": 1643.71,
+    "last_order": "2026-09-24"
+  },
+  "Kenji Watanabe": {
+    "email": "kenji.watanabe@example.com",
+    "city": "Ottawa",
+    "balance": 296.59,
+    "last_order": "2026-03-20"
+  },
+  "Renée Dubé": {
+    "email": "renee.dube@example.org",
+    "city": "Calgary",
+    "balance": 2244.47,
+    "last_order": "2026-03-27"
+  },
+  "José Martínez": {
+    "email": "jose.martinez@example.com",
+    "city": "Albany",
+    "balance": 1461.94,
+    "last_order": "2026-02-24"
+  },
+  "Priya Raghunathan": {
+    "email": "priya.raghunathan@example.com",
+    "city": "Montréal",
+    "balance": 1564.44,
+    "last_order": "2026-04-17"
+  },
+  "Liam O'Connor": {
+    "email": "liam.oconnor@example.org",
+    "city": "Bristol",
+    "balance": 375.64,
+    "last_order": "2026-07-21"
+  },
+  "Mei-Ling Chen": {
+    "email": "mei-ling.chen@example.com",
+    "city": "Montréal",
+    "balance": 1363.79,
+    "last_order": "2026-01-17"
+  },
+  "Oluwaseun Adeyemi": {
+    "email": "oluwaseun.adeyemi@example.com",
+    "city": "Bristol",
+    "balance": 2619.36,
+    "last_order": "2026-06-24"
+  },
+  "Lucía Fernández": {
+    "email": "lucia.fernandez@example.org",
+    "city": "Springfield",
+    "balance": 1186.23,
+    "last_order": "2026-08-28"
+  },
+  "Björn Åkesson": {
+    "email": "bjorn.akesson@example.com",
+    "city": "Leeds",
+    "balance": 1294.19,
+    "last_order": "2026-05-12"
+  }
+}

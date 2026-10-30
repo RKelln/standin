@@ -1,0 +1,177 @@
+# Every sensitive value in the fixtures, one per line. Invented data.
+# Made by tools/make_fixtures.py. Leak checks compare case-insensitively,
+# with runs of whitespace collapsed.
+000 023 218
+004 000 410
+00412-003-7781203
+00412-003-7781211
+011 731 767
+013 024 906
+021 095 773
+021 112 271
+025 504 572
+034 689 224
+044 692 457
+045 600 061
+051 136 943
+085 439 925
+093 269 959
+104 Quarry Road
+12657873
+14129336
+180 Maple Row
+189 Quarry Road
+204 Maple Row
+212-555-0146
+22673
+230 Quarry Road
+24 Fennel Street
+273 Birchwood Ave
+31003300
+31056965
+31191722
+312-555-0143
+312-555-0192
+31836398
+32089680
+327 Cedar Hollow
+33477375
+34292911
+3782 822463 10005
+378282246310005
+396 Maple Row
+4012 8888 8888 1881
+4012888888881881
+403-555-0153
+403-555-0162
+40440951
+4111 1111 1111 1111
+4111111111111111
+415-555-0152
+415-555-0154
+415-555-0163
+416-555-0113
+416-555-0114
+416-555-0125
+416-555-0130
+416-555-0138
+416-555-0176
+416-555-0184
+416-555-0185
+437 Fennel Street
+44753612
+47600
+48280563
+51 Birchwood Ave
+514-555-0179
+514-555-0195
+539 Quarry Road
+55000301
+5555 5555 5555 4444
+5555555555554444
+56785189
+57692
+586 Fennel Street
+59078994
+6011 1111 1111 1117
+6011111111111117
+60158974
+604-555-0120
+604-555-0128
+604-555-0144
+613-555-0166
+613-555-0181
+613-555-0187
+61436611
+64550513
+70005425
+70287
+71035
+71225214
+733 Willow Bend
+735 Kestrel Court
+749 Juniper Crescent
+757 Cedar Hollow
+77049
+77557575
+776 Birchwood Ave
+78331037
+79268069
+835 Fennel Street
+84418537
+84550106
+85184310
+871 Heron Way
+880 Quarry Road
+892 Heron Way
+892 Orchard Close
+907 Willow Bend
+94206131
+95654707
+Aisha Al-Farsi
+Amara Okafor
+Aroha Ngata
+B0Y 5M3
+B2K 1C6
+B7N 6V2
+B7T 7Y5
+BS12 9ZU
+BS5 5FL
+Björn Åkesson
+C1Y 6K2
+C2L 7J2
+Dmitri Volkov
+E4R 3A3
+Fatima Zahra Benali
+François Gagné
+Hamid Rahimi
+Ifeoma Nwosu
+José Martínez
+Kalani Kahale
+Kenji Watanabe
+LS2 6NQ
+Liam O'Connor
+Lucía Fernández
+Mateo Rossi
+Mei-Ling Chen
+N2J 6H1
+Noémie Côté
+Okafor
+Oluwaseun Adeyemi
+Priya Raghunathan
+R1H 3K2
+R7M 3J8
+Ravi Deshpande
+Renée Dubé
+Søren Lindqvist
+Thandiwe Mokoena
+V4E 4E3
+V5A 1G0
+X4J 8Y0
+YO10 4LE
+YO17 2XT
+Zoë Hartmann
+aisha.al-farsi@example.com
+amara.okafor@example.com
+aroha.ngata@example.org
+bjorn.akesson@example.com
+dmitri.volkov@example.com
+fatimazahra.benali@example.com
+francois.gagne@example.com
+hamid.rahimi@example.org
+ifeoma.nwosu@example.com
+jose.martinez@example.com
+kalani.kahale@example.com
+kenji.watanabe@example.com
+liam.oconnor@example.org
+lucia.fernandez@example.org
+mateo.rossi@example.org
+mei-ling.chen@example.com
+noemie.cote@example.org
+oluwaseun.adeyemi@example.com
+priya.raghunathan@example.com
+ravi.deshpande@example.org
+renee.dube@example.org
+soren.lindqvist@example.com
+thandiwe.mokoena@example.com
+zoe.hartmann@example.com

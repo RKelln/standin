@@ -1,0 +1,446 @@
+[
+  {
+    "id": "C-0001",
+    "name": "Amara Okafor",
+    "email": "amara.okafor@example.com",
+    "phone": "514-555-0179",
+    "address": {
+      "street": "907 Willow Bend",
+      "city": "Toronto",
+      "region": "ON",
+      "postal": "B7N 6V2",
+      "country": "CA"
+    },
+    "tags": [
+      "net15"
+    ],
+    "balance": 2605.42,
+    "active": true,
+    "sin": "034 689 224",
+    "card_on_file": "4111 1111 1111 1111"
+  },
+  {
+    "id": "C-0002",
+    "name": "Kenji Watanabe",
+    "email": "kenji.watanabe@example.com",
+    "phone": "416-555-0138",
+    "address": {
+      "street": "586 Fennel Street",
+      "city": "Ottawa",
+      "region": "ON",
+      "postal": "C2L 7J2",
+      "country": "CA"
+    },
+    "tags": [],
+    "balance": 1762.08,
+    "active": true,
+    "sin": "011 731 767"
+  },
+  {
+    "id": "C-0003",
+    "name": "Renée Dubé",
+    "email": "renee.dube@example.org",
+    "phone": "613-555-0181",
+    "address": {
+      "street": "757 Cedar Hollow",
+      "city": "Calgary",
+      "region": "AB",
+      "postal": "B2K 1C6",
+      "country": "CA"
+    },
+    "tags": [
+      "net30",
+      "retail",
+      "vip"
+    ],
+    "balance": 720.43,
+    "active": true,
+    "sin": "051 136 943"
+  },
+  {
+    "id": "C-0004",
+    "name": "José Martínez",
+    "email": "jose.martinez@example.com",
+    "phone": "415-555-0152",
+    "address": {
+      "street": "871 Heron Way",
+      "city": "Albany",
+      "region": "NY",
+      "postal": "22673",
+      "country": "US"
+    },
+    "tags": [
+      "tax-exempt"
+    ],
+    "balance": 1804.01,
+    "active": true
+  },
+  {
+    "id": "C-0005",
+    "name": "Priya Raghunathan",
+    "email": "priya.raghunathan@example.com",
+    "phone": "403-555-0162",
+    "address": {
+      "street": "273 Birchwood Ave",
+      "city": "Montréal",
+      "region": "QC",
+      "postal": "X4J 8Y0",
+      "country": "CA"
+    },
+    "tags": [],
+    "balance": 2260.57,
+    "active": true,
+    "sin": "021 095 773"
+  },
+  {
+    "id": "C-0006",
+    "name": "Liam O'Connor",
+    "email": "liam.oconnor@example.org",
+    "phone": "416-555-0114",
+    "address": {
+      "street": "735 Kestrel Court",
+      "city": "Bristol",
+      "region": "",
+      "postal": "LS2 6NQ",
+      "country": "UK"
+    },
+    "tags": [
+      "retail",
+      "vip"
+    ],
+    "balance": 2737.17,
+    "active": true,
+    "card_on_file": "5555 5555 5555 4444"
+  },
+  {
+    "id": "C-0007",
+    "name": "Mei-Ling Chen",
+    "email": "mei-ling.chen@example.com",
+    "phone": "416-555-0176",
+    "address": {
+      "street": "204 Maple Row",
+      "city": "Montréal",
+      "region": "QC",
+      "postal": "N2J 6H1",
+      "country": "CA"
+    },
+    "tags": [
+      "wholesale"
+    ],
+    "balance": 529.63,
+    "active": true,
+    "sin": "044 692 457"
+  },
+  {
+    "id": "C-0008",
+    "name": "Oluwaseun Adeyemi",
+    "email": "oluwaseun.adeyemi@example.com",
+    "phone": "416-555-0185",
+    "address": {
+      "street": "189 Quarry Road",
+      "city": "Bristol",
+      "region": "",
+      "postal": "YO10 4LE",
+      "country": "UK"
+    },
+    "tags": [],
+    "balance": 2542.95,
+    "active": true
+  },
+  {
+    "id": "C-0009",
+    "name": "Lucía Fernández",
+    "email": "lucia.fernandez@example.org",
+    "phone": "312-555-0143",
+    "address": {
+      "street": "327 Cedar Hollow",
+      "city": "Springfield",
+      "region": "IL",
+      "postal": "77049",
+      "country": "US"
+    },
+    "tags": [
+      "net30",
+      "new",
+      "retail"
+    ],
+    "balance": 1075.2,
+    "active": true
+  },
+  {
+    "id": "C-0010",
+    "name": "Björn Åkesson",
+    "email": "bjorn.akesson@example.com",
+    "phone": "604-555-0144",
+    "address": {
+      "street": "180 Maple Row",
+      "city": "Leeds",
+      "region": "",
+      "postal": "BS5 5FL",
+      "country": "UK"
+    },
+    "tags": [
+      "net15",
+      "net30"
+    ],
+    "balance": 553.7,
+    "active": false
+  },
+  {
+    "id": "C-0011",
+    "name": "Fatima Zahra Benali",
+    "email": "fatimazahra.benali@example.com",
+    "phone": "416-555-0125",
+    "address": {
+      "street": "104 Quarry Road",
+      "city": "Ottawa",
+      "region": "ON",
+      "postal": "B0Y 5M3",
+      "country": "CA"
+    },
+    "tags": [],
+    "balance": 2564.98,
+    "active": true,
+    "sin": "021 112 271",
+    "card_on_file": "3782 822463 10005"
+  },
+  {
+    "id": "C-0012",
+    "name": "Aroha Ngata",
+    "email": "aroha.ngata@example.org",
+    "phone": "403-555-0153",
+    "address": {
+      "street": "892 Heron Way",
+      "city": "Vancouver",
+      "region": "BC",
+      "postal": "R7M 3J8",
+      "country": "CA"
+    },
+    "tags": [
+      "net15",
+      "net30",
+      "wholesale"
+    ],
+    "balance": 2589.67,
+    "active": true,
+    "sin": "000 023 218"
+  },
+  {
+    "id": "C-0013",
+    "name": "Dmitri Volkov",
+    "email": "dmitri.volkov@example.com",
+    "phone": "212-555-0146",
+    "address": {
+      "street": "539 Quarry Road",
+      "city": "Albany",
+      "region": "NY",
+      "postal": "47600",
+      "country": "US"
+    },
+    "tags": [
+      "net30"
+    ],
+    "balance": 525.78,
+    "active": true
+  },
+  {
+    "id": "C-0014",
+    "name": "Ifeoma Nwosu",
+    "email": "ifeoma.nwosu@example.com",
+    "phone": "514-555-0195",
+    "address": {
+      "street": "776 Birchwood Ave",
+      "city": "Vancouver",
+      "region": "BC",
+      "postal": "B7T 7Y5",
+      "country": "CA"
+    },
+    "tags": [
+      "net15",
+      "net30",
+      "vip"
+    ],
+    "balance": 98.98,
+    "active": true,
+    "sin": "093 269 959"
+  },
+  {
+    "id": "C-0015",
+    "name": "Hamid Rahimi",
+    "email": "hamid.rahimi@example.org",
+    "phone": "604-555-0128",
+    "address": {
+      "street": "880 Quarry Road",
+      "city": "Ottawa",
+      "region": "ON",
+      "postal": "V5A 1G0",
+      "country": "CA"
+    },
+    "tags": [],
+    "balance": 1776.41,
+    "active": false,
+    "sin": "004 000 410"
+  },
+  {
+    "id": "C-0016",
+    "name": "Kalani Kahale",
+    "email": "kalani.kahale@example.com",
+    "phone": "312-555-0192",
+    "address": {
+      "street": "835 Fennel Street",
+      "city": "Austin",
+      "region": "TX",
+      "postal": "57692",
+      "country": "US"
+    },
+    "tags": [],
+    "balance": 241.39,
+    "active": false,
+    "card_on_file": "4012 8888 8888 1881"
+  },
+  {
+    "id": "C-0017",
+    "name": "Thandiwe Mokoena",
+    "email": "thandiwe.mokoena@example.com",
+    "phone": "416-555-0130",
+    "address": {
+      "street": "892 Orchard Close",
+      "city": "Leeds",
+      "region": "",
+      "postal": "BS12 9ZU",
+      "country": "UK"
+    },
+    "tags": [],
+    "balance": 474.8,
+    "active": true
+  },
+  {
+    "id": "C-0018",
+    "name": "Ravi Deshpande",
+    "email": "ravi.deshpande@example.org",
+    "phone": "604-555-0120",
+    "address": {
+      "street": "733 Willow Bend",
+      "city": "Ottawa",
+      "region": "ON",
+      "postal": "V4E 4E3",
+      "country": "CA"
+    },
+    "tags": [
+      "new"
+    ],
+    "balance": 812.86,
+    "active": false,
+    "sin": "013 024 906"
+  },
+  {
+    "id": "C-0019",
+    "name": "Zoë Hartmann",
+    "email": "zoe.hartmann@example.com",
+    "phone": "416-555-0113",
+    "address": {
+      "street": "437 Fennel Street",
+      "city": "Bristol",
+      "region": "",
+      "postal": "YO17 2XT",
+      "country": "UK"
+    },
+    "tags": [],
+    "balance": 1548.48,
+    "active": false
+  },
+  {
+    "id": "C-0020",
+    "name": "François Gagné",
+    "email": "francois.gagne@example.com",
+    "phone": "613-555-0187",
+    "address": {
+      "street": "749 Juniper Crescent",
+      "city": "Montréal",
+      "region": "QC",
+      "postal": "C1Y 6K2",
+      "country": "CA"
+    },
+    "tags": [
+      "vip",
+      "wholesale"
+    ],
+    "balance": 553.61,
+    "active": true,
+    "sin": "045 600 061"
+  },
+  {
+    "id": "C-0021",
+    "name": "Noémie Côté",
+    "email": "noemie.cote@example.org",
+    "phone": "416-555-0184",
+    "address": {
+      "street": "230 Quarry Road",
+      "city": "Ottawa",
+      "region": "ON",
+      "postal": "E4R 3A3",
+      "country": "CA"
+    },
+    "tags": [
+      "new"
+    ],
+    "balance": 1009.8,
+    "active": true,
+    "sin": "085 439 925",
+    "card_on_file": "6011 1111 1111 1117"
+  },
+  {
+    "id": "C-0022",
+    "name": "Søren Lindqvist",
+    "email": "soren.lindqvist@example.com",
+    "phone": "415-555-0154",
+    "address": {
+      "street": "51 Birchwood Ave",
+      "city": "Austin",
+      "region": "TX",
+      "postal": "71035",
+      "country": "US"
+    },
+    "tags": [
+      "net15",
+      "wholesale"
+    ],
+    "balance": 773.05,
+    "active": true
+  },
+  {
+    "id": "C-0023",
+    "name": "Aisha Al-Farsi",
+    "email": "aisha.al-farsi@example.com",
+    "phone": "613-555-0166",
+    "address": {
+      "street": "396 Maple Row",
+      "city": "Ottawa",
+      "region": "ON",
+      "postal": "R1H 3K2",
+      "country": "CA"
+    },
+    "tags": [
+      "new"
+    ],
+    "balance": 984.98,
+    "active": true,
+    "sin": "025 504 572"
+  },
+  {
+    "id": "C-0024",
+    "name": "Mateo Rossi",
+    "email": "mateo.rossi@example.org",
+    "phone": "415-555-0163",
+    "address": {
+      "street": "24 Fennel Street",
+      "city": "Albany",
+      "region": "NY",
+      "postal": "70287",
+      "country": "US"
+    },
+    "tags": [],
+    "balance": 985.08,
+    "active": true
+  }
+]

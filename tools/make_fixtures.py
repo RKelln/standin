@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""Make the synthetic test fixtures in testdata/.
+
+Every name, email, phone number, address and number in here is invented.
+Emails use example.com / example.org (reserved by RFC 2606). Phone numbers use
+the 555-01xx range set aside for fiction. Card numbers are the well-known
+public test numbers. SINs start with 0, which is never issued to a person, and
+pass the Luhn check so the pattern pass can find them.
+
+Run:  uv run tools/make_fixtures.py          (writes testdata/)
+      uv run tools/make_fixtures.py --check  (exit 1 if testdata/ is out of date)
+
+Standard library only. Fixed random seed, so the output is the same each run.
+"""
+
+from __future__ import annotations
+
+import argparse
+import codecs
+import csv
+import io
+import json
+import random
+import sys
+import unicodedata
+import zipfile
+from pathlib import Path
+
+SEED = 20261030
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "testdata"
+
+# Invented people, from many cultures. Every name must be encodable in
+# Windows-1252 (the cp1252 fixture uses the same names). Some end in an
+# accented letter on purpose ("Renée Dubé", "François Gagné", "Noémie Côté"):
+# a regex word boundary (\b) in Go is ASCII-only and misses those.
+CUSTOMERS = [
+    ("Amara", "Okafor", "CA"),
+    ("Kenji", "Watanabe", "CA"),
+    ("Renée", "Dubé", "CA"),
+    ("José", "Martínez", "US"),
+    ("Priya", "Raghunathan", "CA"),
+    ("Liam", "O'Connor", "UK"),
+    ("Mei-Ling", "Chen", "CA"),
+    ("Oluwaseun", "Adeyemi", "UK"),
+    ("Lucía", "Fernández", "US"),
+    ("Björn", "Åkesson", "UK"),
+    ("Fatima Zahra", "Benali", "CA"),
+    ("Aroha", "Ngata", "CA"),
+    ("Dmitri", "Volkov", "US"),
+    ("Ifeoma", "Nwosu", "CA"),
+    ("Hamid", "Rahimi", "CA"),
+    ("Kalani", "Kahale", "US"),
+    ("Thandiwe", "Mokoena", "UK"),
+    ("Ravi", "Deshpande", "CA"),
+    ("Zoë", "Hartmann", "UK"),
+    ("François", "Gagné", "CA"),
+    ("Noémie", "Côté", "CA"),
+    ("Søren", "Lindqvist", "US"),
+    ("Aisha", "Al-Farsi", "CA"),
+    ("Mateo", "Rossi", "US"),
+]
+
+AREA = {"CA": ["416", "604", "514", "613", "403"], "US": ["212", "415", "312", "206"], "UK": ["416", "604"]}
+CITY = {
+    "CA": [("Toronto", "ON"), ("Vancouver", "BC"), ("Montréal", "QC"), ("Ottawa", "ON"), ("Calgary", "AB")],
+    "US": [("Springfield", "IL"), ("Portland", "OR"), ("Albany", "NY"), ("Austin", "TX")],
+    "UK": [("Leeds", ""), ("Bristol", ""), ("York", "")],
+}
+STREETS = ["Juniper Crescent", "Maple Row", "Larkspur Lane", "Quarry Road", "Heron Way", "Birchwood Ave",
+           "Kestrel Court", "Orchard Close", "Tamarack Drive", "Willow Bend", "Cedar Hollow", "Fennel Street"]
+TAGS = ["wholesale", "retail", "net30", "net15", "vip", "new", "paper-invoice", "tax-exempt"]
+
+# Well-known public test card numbers (they pass Luhn; they are not real cards).
+TEST_CARDS = ["4111 1111 1111 1111", "5555 5555 5555 4444", "3782 822463 10005", "4012 8888 8888 1881",
+              "6011 1111 1111 1117"]
+
+BUSINESS_ACCOUNTS = ["00412-003-7781203", "00412-003-7781211"]
+
+
+def ascii_fold(s: str) -> str:
+    s = s.replace("ø", "o").replace("Ø", "O").replace("æ", "ae").replace("ß", "ss")
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def luhn_ok(digits: str) -> bool:
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch)
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+def make_sin(rng: random.Random) -> str:
+    while True:
+        body = "0" + "".join(str(rng.randint(0, 9)) for _ in range(7))
+        for last in "0123456789":
+            if luhn_ok(body + last):
+                d = body + last
+                return f"{d[0:3]} {d[3:6]} {d[6:9]}"
+
+
+def ca_postal(rng: random.Random) -> str:
+    L = "ABCEGHJKLMNPRSTVXY"
+    return f"{rng.choice(L)}{rng.randint(0,9)}{rng.choice(L)} {rng.randint(0,9)}{rng.choice(L)}{rng.randint(0,9)}"
+
+
+def uk_postal(rng: random.Random) -> str:
+    L = "ABDEFGHJLNPQRSTUWXYZ"
+    return f"{rng.choice(['LS', 'BS', 'YO'])}{rng.randint(1, 19)} {rng.randint(0,9)}{rng.choice(L)}{rng.choice(L)}"
+
+
+def us_postal(rng: random.Random) -> str:
+    return f"{rng.randint(10000, 99999)}"
+
+
+def csv_text(rows: list[list[str]], lineterminator: str) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator=lineterminator)
+    w.writerows(rows)
+    return buf.getvalue()
+
+
+def tiny_pdf(text: str) -> bytes:
+    objs = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R "
+        b"/Resources << /Font << /F1 5 0 R >> >> >>",
+        None,  # content stream, filled below
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    stream = f"BT /F1 12 Tf 20 100 Td ({text}) Tj ET".encode("latin-1")
+    objs[3] = b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for i, body in enumerate(objs, start=1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+def fake_xlsx(names: list[str]) -> bytes:
+    """A minimal workbook with inline strings. Only needs to look like a real .xlsx (a zip)."""
+    rows = "".join(
+        f'<row r="{i}"><c r="A{i}" t="inlineStr"><is><t>{n}</t></is></c><c r="B{i}"><v>{100 + i}</v></c></row>'
+        for i, n in enumerate(names, start=1)
+    )
+    files = {
+        "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        "</Types>",
+        "_rels/.rels": '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+        'officeDocument" Target="xl/workbook.xml"/></Relationships>',
+        "xl/workbook.xml": '<?xml version="1.0" encoding="UTF-8"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="Ledger" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        "xl/_rels/workbook.xml.rels": '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+        'worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+        "xl/worksheets/sheet1.xml": '<?xml version="1.0" encoding="UTF-8"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"<sheetData>{rows}</sheetData></worksheet>",
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, body in files.items():
+            info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, body.encode("utf-8"))
+    return buf.getvalue()
+
+
+def build() -> dict[str, bytes]:
+    rng = random.Random(SEED)
+    files: dict[str, bytes] = {}
+    known: set[str] = set()
+    gaps: list[str] = []
+
+    # ---- people -----------------------------------------------------------
+    people = []
+    nn = rng.sample(range(10, 100), len(CUSTOMERS))
+    for i, (first, last, country) in enumerate(CUSTOMERS):
+        name = f"{first} {last}"
+        domain = "example.org" if i % 3 == 2 else "example.com"
+        local = ascii_fold(f"{first}.{last}").lower().replace(" ", "").replace("'", "")
+        phone = f"{rng.choice(AREA[country])}-555-01{nn[i]:02d}"
+        city, region = rng.choice(CITY[country])
+        postal = {"CA": ca_postal, "US": us_postal, "UK": uk_postal}[country](rng)
+        street = f"{rng.randint(2, 980)} {rng.choice(STREETS)}"
+        people.append(dict(first=first, last=last, name=name, email=f"{local}@{domain}", phone=phone,
+                           country=country, city=city, region=region, postal=postal, street=street,
+                           sin=make_sin(rng) if country == "CA" else ""))
+        known.update([name, f"{local}@{domain}", phone, street, postal])
+        if country == "CA":
+            known.add(people[-1]["sin"])
+
+    # ---- invoices.csv ------------------------------------------------------
+    order = list(range(len(people)))
+    rng.shuffle(order)
+    order += [rng.randrange(len(people)) for _ in range(40 - len(order))]
+    inv_rows = [["Invoice", "Date", "Customer", "Email", "Phone", "Amount", "Status", "Notes"]]
+    invoices = []
+    day = 0
+    first_seen: set[int] = set()
+    for n, pi in enumerate(order):
+        p = people[pi]
+        day += rng.randint(1, 6)
+        month, dom = 1 + day // 28, 1 + day % 28
+        date = f"2026-{month:02d}-{dom:02d}"
+        amount = f"{rng.randint(85, 4800)}.{rng.randint(0, 99):02d}"
+        status = rng.choices(["Paid", "Open", "Overdue"], weights=[6, 2, 2])[0]
+        templates = ["", "", "", "Net 30", "Paid by e-transfer", "Reminder sent to {name}",
+                     "{name} asked to split the payment. Call {phone}", "Left a voicemail at {phone}",
+                     "Sent receipt to {email}", "Gave {name} a 5% discount for paying early"]
+        note = rng.choice(templates).format(**p)
+        customer = p["name"]
+        if pi in first_seen:
+            # Spelling variants of a name already seen. Restore must give back the
+            # first spelling, and both must get the same stand-in.
+            if n == 29:
+                customer = customer.lower()
+            elif n == 34:
+                customer = "  " + customer.replace(" ", "  ") + " "
+        first_seen.add(pi)
+        invoices.append(dict(no=f"INV-{1001 + n}", date=date, person=p, amount=amount, status=status))
+        inv_rows.append([f"INV-{1001 + n}", date, customer, p["email"], p["phone"], amount, status, note])
+    # A note that names a customer by first name only. Not in the mapping, so the
+    # contract lets it through. Listed in known-gaps.txt, not known-values.txt.
+    gap_p = people[order[5]]
+    inv_rows[6][7] = f"Spoke with {gap_p['first']} about the deposit"
+    gaps.append(gap_p["first"])
+    files["invoices.csv"] = csv_text(inv_rows, "\n").encode("utf-8")
+
+    # ---- bank-export.csv ---------------------------------------------------
+    bank_rows = [["Date", "Description", "Amount", "Balance", "Account"]]
+    events = []
+    for inv in invoices:
+        if inv["status"] == "Paid":
+            events.append(("in", inv))
+    expenses = ["MONTHLY ACCOUNT FEE", "HYDRO BILL PAYMENT", "RENT PAYMENT", "INSURANCE PREMIUM",
+                "POS PURCHASE CORNER OFFICE SUPPLY", "POS PURCHASE PRINT SHOP", "PHONE AND INTERNET",
+                "TRANSFER TO SAVINGS", "INTEREST PAID"]
+    while len(events) < 59:
+        events.append(("out", rng.choice(expenses)))
+    rng.shuffle(events)
+    martinez = next(p for p in people if p["last"] == "Martínez")
+    events.insert(17, ("gap", martinez))
+    balance = 8250.00
+    for k, (kind, ev) in enumerate(events):
+        day = 2 + k
+        date = f"2026-{1 + day // 28:02d}-{1 + day % 28:02d}"
+        acct = BUSINESS_ACCOUNTS[0]
+        if kind == "in":
+            p = ev["person"]
+            ref = f"{rng.randint(10_000_000, 99_999_999)}"
+            known.add(ref)
+            style = rng.randrange(3)
+            if style == 0:
+                desc = f"E-TRANSFER FROM {p['name'].upper()} REF {ref}"
+            elif style == 1:
+                desc = f"INTERAC E-TRF RECEIVED {p['name']} {ref}"
+            else:
+                desc = f"DEPOSIT {p['name'].upper()} FOR {ev['no']} REF {ref}"
+            amt = float(ev["amount"])
+        elif kind == "gap":
+            # Banks cut names short. "J MARTINEZ" is not in the mapping, so it stays.
+            ref = f"{rng.randint(10_000_000, 99_999_999)}"
+            known.add(ref)
+            desc = f"E-TRANSFER FROM J MARTINEZ REF {ref}"
+            gaps.append("J MARTINEZ")
+            amt = 120.00
+        else:
+            desc = ev
+            amt = -round(rng.uniform(15, 900), 2)
+            if ev == "INTEREST PAID":
+                amt = round(rng.uniform(0.5, 9), 2)
+                acct = BUSINESS_ACCOUNTS[1]
+        balance = round(balance + amt, 2)
+        bank_rows.append([date, desc, f"{amt:.2f}", f"{balance:.2f}", acct])
+    known.update(BUSINESS_ACCOUNTS)
+    bank_text = csv_text(bank_rows, "\r\n")
+    files["bank-export.csv"] = bank_text.encode("utf-8")
+    files["bank-export-cp1252.csv"] = bank_text.encode("cp1252")
+    files["bank-export-bom.csv"] = codecs.BOM_UTF8 + bank_text.encode("utf-8")
+    files["bank-export-utf16.csv"] = bank_text.encode("utf-16")  # Python writes a BOM
+
+    # ---- customers.json ----------------------------------------------------
+    cards = iter(TEST_CARDS)
+    recs = []
+    for i, p in enumerate(people):
+        r = {
+            "id": f"C-{i + 1:04d}",
+            "name": p["name"],
+            "email": p["email"],
+            "phone": p["phone"],
+            "address": {"street": p["street"], "city": p["city"], "region": p["region"],
+                        "postal": p["postal"], "country": p["country"]},
+            "tags": sorted(rng.sample(TAGS, rng.randint(0, 3))),
+            "balance": round(rng.uniform(0, 3000), 2),
+            "active": rng.random() > 0.2,
+        }
+        if p["sin"]:
+            r["sin"] = p["sin"]
+        if i % 5 == 0:
+            card = next(cards, None)
+            if card:
+                r["card_on_file"] = card
+                known.add(card)
+                known.add(card.replace(" ", ""))
+        recs.append(r)
+    files["customers.json"] = (json.dumps(recs, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+    by_name = {}
+    for p in people[:10]:
+        by_name[p["name"]] = {"email": p["email"], "city": p["city"],
+                              "balance": round(rng.uniform(0, 3000), 2),
+                              "last_order": f"2026-0{rng.randint(1, 9)}-{rng.randint(10, 28)}"}
+    files["customers-by-name.json"] = (json.dumps(by_name, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+    # ---- wide-names-as-headers.csv ----------------------------------------
+    hdr_people = [people[0], people[1], people[8]]
+    header = ["Month"] + [p["name"] for p in hdr_people] + [people[13]["email"], people[17]["phone"], "Total"]
+    wide = [header]
+    for m in ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]:
+        vals = [round(rng.uniform(0, 900), 2) for _ in range(5)]
+        wide.append([m] + [f"{v:.2f}" for v in vals] + [f"{sum(vals):.2f}"])
+    files["wide-names-as-headers.csv"] = csv_text(wide, "\n").encode("utf-8")
+
+    # ---- ragged.csv (line 4 has an extra field: an unquoted comma) ---------
+    rg = [["Invoice", "Customer", "Amount", "Status"],
+          ["INV-2001", people[2]["name"], "120.00", "Paid"],
+          ["INV-2002", people[3]["name"], "75.50", "Open"]]
+    text = csv_text(rg, "\n")
+    text += f"INV-2003,{people[0]['last']}, {people[0]['first']},310.00,Overdue\n"
+    text += f"INV-2004,{people[4]['name']},42.00,Paid\n"
+    files["ragged.csv"] = text.encode("utf-8")
+    known.add(people[0]["last"])  # shows up alone in the ragged line
+
+    # ---- raw input that already holds stand-in-shaped text (scrub must refuse)
+    # A real "[PERSON_2]" in raw data would be "restored" to someone else's name.
+    files["standin-shaped-cell.csv"] = csv_text(
+        [["Invoice", "Customer", "Notes"],
+         ["INV-3001", people[5]["name"], "Paid"],
+         ["INV-3002", people[6]["name"], f"Same as [PERSON_2], ask {people[6]['name']}"]], "\n").encode("utf-8")
+    files["standin-shaped-header.csv"] = csv_text(
+        [["Invoice", "[PERSON_2]", "Amount"],
+         ["INV-3003", people[7]["name"], "10.00"]], "\n").encode("utf-8")
+    files["standin-shaped-key.json"] = (json.dumps(
+        {"[PERSON_3]": {"email": people[9]["email"]}, people[10]["name"]: {"email": people[10]["email"]}},
+        ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+    # ---- refused formats ---------------------------------------------------
+    files["statement.pdf"] = tiny_pdf(f"Statement for {ascii_fold(people[0]['name'])}")
+    files["ledger.xlsx"] = fake_xlsx([p["name"] for p in people[:4]])
+    files["empty.csv"] = b""
+
+    # ---- approved-config fixture ------------------------------------------
+    config = {
+        "version": 1,
+        "files": [
+            {
+                "match": "raw/invoices*.csv",
+                "columns": {
+                    "Invoice": {"action": "keep", "reason": "invoice numbers are ours; needed to match"},
+                    "Date": {"action": "keep", "reason": "needed to match payments"},
+                    "Customer": {"action": "tokenize", "category": "PERSON", "reason": "customer names"},
+                    "Email": {"action": "tokenize", "category": "EMAIL", "reason": "customer emails"},
+                    "Phone": {"action": "tokenize", "category": "PHONE", "reason": "customer phones"},
+                    "Amount": {"action": "keep", "reason": "needed to match payments"},
+                    "Status": {"action": "keep", "reason": "Paid, Open or Overdue"},
+                    "Notes": {"action": "scan", "reason": "free text; replace known names and patterns"},
+                },
+            },
+            {
+                "match": "raw/bank-export*.csv",
+                "columns": {
+                    "Date": {"action": "keep", "reason": "needed to match invoices"},
+                    "Description": {"action": "scan", "reason": "names and reference numbers inside"},
+                    "Amount": {"action": "keep", "reason": "needed to match invoices"},
+                    "Balance": {"action": "keep", "reason": "running balance"},
+                    "Account": {"action": "tokenize", "category": "ACCOUNT", "reason": "our account numbers"},
+                },
+            },
+        ],
+    }
+    files["standin.config.json"] = (json.dumps(config, indent=2) + "\n").encode("utf-8")
+
+    files["known-values.txt"] = (
+        "# Every sensitive value in the fixtures, one per line. Invented data.\n"
+        "# Made by tools/make_fixtures.py. Leak checks compare case-insensitively,\n"
+        "# with runs of whitespace collapsed.\n"
+        + "".join(v + "\n" for v in sorted(known))
+    ).encode("utf-8")
+    files["known-gaps.txt"] = (
+        "# Sensitive text the contract lets through on purpose (names not in the mapping).\n"
+        "# Tests log whether these leak; they do not fail on them.\n"
+        + "".join(v + "\n" for v in gaps)
+    ).encode("utf-8")
+    return files
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--check", action="store_true", help="compare with testdata/ and exit 1 if different")
+    args = ap.parse_args()
+    files = build()
+    if args.check:
+        bad = [n for n, b in files.items() if not (OUT / n).exists() or (OUT / n).read_bytes() != b]
+        for n in bad:
+            print(f"out of date: testdata/{n}")
+        return 1 if bad else 0
+    OUT.mkdir(exist_ok=True)
+    for name, body in files.items():
+        (OUT / name).write_bytes(body)
+    print(f"wrote {len(files)} files to {OUT.relative_to(ROOT)}/")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

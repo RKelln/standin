@@ -145,6 +145,26 @@ Strict: replaces every exact stand-in it knows, longest first, never fuzzy (`[PE
 (`[PERSON_99]`), and near-misses it did not change (`[person_1]`, `PERSON_1`, `[PERSON 1]`, `Person 1`).
 Exit 1 if any.
 
+### Settled details (2026-10-30, from track C questions)
+
+1. Paths: `raw/a/b.csv` -> `scrubbed/a/b.csv` (path relative to `raw/`); `scrubbed/a/b.md` ->
+   `restored/a/b.md`; a file outside `scrubbed/` -> `restored/<base name>`.
+2. `scrub` of many files runs in two passes: tokenize columns of every file first, then `scan` columns,
+   so a name met in a later file is still known.
+3. Exit codes: `shape` 0, or 1 if it flagged a header or file name. `scrub` 0 when approved and clean.
+   A config with no `keep` needs no approval.
+4. Restore and check reports go to stderr; stdout carries only the restored text (for `-`).
+5. `approve` asks `Keep <column> in <match>? Type yes:` per keep. `approval.json`:
+   `{"version":1,"config_sha256":"...","approved_at":"RFC3339","keeps":["<match>:<column>"]}`.
+6. The private folder hash uses the absolute path with symlinks resolved.
+7. No `standin.config.json`: `scrub` refuses (exit 2), "run standin shape, then write a config".
+8. Free-text rule: average over non-empty cells.
+9. A file name that looks like data: `shape` writes `file_n` and says rename; `scrub` refuses it (exit 2).
+   Messages never print such a name.
+10. Binary content (NUL bytes, `PK`/`%PDF` magic) is refused whatever the extension.
+11. JSON records may differ in keys; a missing key stays missing.
+12. Word boundaries in the scan are Unicode-aware (Go's `\b` is ASCII-only: `Renée` would be missed).
+
 ## Order
 
 1. Now: R (running), A, C, D in parallel.

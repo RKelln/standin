@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "match": "raw/invoices*.csv",
+      "columns": {
+        "Invoice": {
+          "action": "keep",
+          "reason": "invoice numbers are ours; needed to match"
+        },
+        "Date": {
+          "action": "keep",
+          "reason": "needed to match payments"
+        },
+        "Customer": {
+          "action": "tokenize",
+          "category": "PERSON",
+          "reason": "customer names"
+        },
+        "Email": {
+          "action": "tokenize",
+          "category": "EMAIL",
+          "reason": "customer emails"
+        },
+        "Phone": {
+          "action": "tokenize",
+          "category": "PHONE",
+          "reason": "customer phones"
+        },
+        "Amount": {
+          "action": "keep",
+          "reason": "needed to match payments"
+        },
+        "Status": {
+          "action": "keep",
+          "reason": "Paid, Open or Overdue"
+        },
+        "Notes": {
+          "action": "scan",
+          "reason": "free text; replace known names and patterns"
+        }
+      }
+    },
+    {
+      "match": "raw/bank-export*.csv",
+      "columns": {
+        "Date": {
+          "action": "keep",
+          "reason": "needed to match invoices"
+        },
+        "Description": {
+          "action": "scan",
+          "reason": "names and reference numbers inside"
+        },
+        "Amount": {
+          "action": "keep",
+          "reason": "needed to match invoices"
+        },
+        "Balance": {
+          "action": "keep",
+          "reason": "running balance"
+        },
+        "Account": {
+          "action": "tokenize",
+          "category": "ACCOUNT",
+          "reason": "our account numbers"
+        }
+      }
+    }
+  ]
+}

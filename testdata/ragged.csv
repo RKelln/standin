@@ -1,0 +1,5 @@
+Invoice,Customer,Amount,Status
+INV-2001,Renée Dubé,120.00,Paid
+INV-2002,José Martínez,75.50,Open
+INV-2003,Okafor, Amara,310.00,Overdue
+INV-2004,Priya Raghunathan,42.00,Paid
