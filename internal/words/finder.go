@@ -15,15 +15,16 @@ type Reason uint16
 
 // Reasons. The research notes (docs/research/free-text.md, section 2) give the rules.
 const (
-	NameSpot   Reason = 1 << iota // after Hi, Dear, Thanks, "name is", a title ...
-	SignOff                       // a short line after "Thanks," or "--"
-	NotInDict                     // capitalised and not an English word
-	FirstName                     // capitalised, in the first-name list, not at a sentence start
-	NextToName                    // capitalised, right after a word picked out as a name
-	Calendar                      // a day or month name
-	FieldPart                     // a capitalised word from a tokenized "Label: value" line
-	Uncased                       // a word in a script with no capital letters (Chinese, Arabic ...)
-	KnownName                     // a one-word NAME value from the mapping (swapped before)
+	NameSpot    Reason = 1 << iota // after Hi, Dear, Thanks, "name is", a title ...
+	SignOff                        // a short line after "Thanks," or "--"
+	NotInDict                      // capitalised and not an English word
+	FirstName                      // capitalised, in the first-name list, not at a sentence start
+	NextToName                     // capitalised, right after a word picked out as a name
+	Calendar                       // a day or month name
+	FieldPart                      // a capitalised word from a tokenized "Label: value" line
+	Uncased                        // a word in a script with no capital letters (Chinese, Arabic ...)
+	KnownName                      // a one-word NAME value from the mapping (swapped before)
+	MachineText                    // a long encoded run: a tracking id, a base64 blob, a hex digest
 )
 
 // nameLike are the reasons that put a word in the name-like group.
@@ -71,8 +72,60 @@ var (
 	signJunk = regexp.MustCompile(`[\s,.!—-]`)
 )
 
-// Tokens returns the word spans in s.
+// Tokens returns the word spans in s. A long encoded run (a tracking id, a
+// base64 blob, a hex digest) is one span: split into letters it becomes
+// several meaningless candidates ("AQH", "JzLm", "Pq" out of one id) and
+// several decisions for the person (decision 72).
 func Tokens(s string) [][2]int {
+	words := wordSpans(s)
+	runs := encodedRuns(s)
+	if len(runs) == 0 {
+		return words
+	}
+	out := make([][2]int, 0, len(words))
+	ri := 0
+	for _, w := range words {
+		for ri < len(runs) && runs[ri][1] <= w[0] {
+			out = append(out, runs[ri])
+			ri++
+		}
+		if ri < len(runs) && w[0] >= runs[ri][0] && w[0] < runs[ri][1] {
+			continue // inside an encoded run: the run is the token
+		}
+		out = append(out, w)
+	}
+	return append(out, runs[ri:]...)
+}
+
+// runsRe finds a run of at least 12 characters from the alphabet of encoded
+// text: letters, digits and the base64 "+". A slash, hyphen, underscore or "="
+// ends a run, so a path ("/people/oksana"), a slug ("spring-2026-newsletter")
+// and a query part ("campaign=spring") keep their ordinary words.
+var runsRe = regexp.MustCompile(`[A-Za-z0-9+]{12,}`)
+
+// encodedRuns returns the runs in s that are machine writing: 12+ characters
+// with a digit, or base64 marks. A long run of letters alone is a word (a
+// German compound), not an id.
+func encodedRuns(s string) [][2]int {
+	var out [][2]int
+	for _, loc := range runsRe.FindAllStringIndex(s, -1) {
+		t := s[loc[0]:loc[1]]
+		digit := false
+		for i := 0; i < len(t); i++ {
+			if t[i] >= '0' && t[i] <= '9' {
+				digit = true
+				break
+			}
+		}
+		if digit || strings.Contains(t, "+") {
+			out = append(out, [2]int{loc[0], loc[1]})
+		}
+	}
+	return out
+}
+
+// wordSpans returns the spans of words in s.
+func wordSpans(s string) [][2]int {
 	var out [][2]int
 	for _, loc := range wordRe.FindAllStringIndex(s, -1) {
 		out = append(out, [2]int{loc[0], loc[1]})
@@ -218,6 +271,10 @@ func (f *Finder) addLine(line, prevLine string) {
 	}
 	lead := mdLead.FindStringIndex(line)[1]
 	toks := Tokens(line)
+	runAt := make(map[int]bool, 4)
+	for _, r := range encodedRuns(line) {
+		runAt[r[0]] = true
+	}
 	// A sign-off line: 1 to 3 words and nothing else, after a closing line or after "--".
 	body := line[lead:]
 	var only [][2]int
@@ -240,6 +297,13 @@ func (f *Finder) addLine(line, prevLine string) {
 		a, b := t[0], t[1]
 		w := line[a:b]
 		if covered(hits, a, b) {
+			hitPrev = false
+			continue
+		}
+		if runAt[a] {
+			// One encoded run, one candidate: it is noise or an id, never a
+			// name, and it is swapped whole if the person keeps it out.
+			f.add(w, MachineText, line, a, b, counted)
 			hitPrev = false
 			continue
 		}

@@ -251,3 +251,50 @@ func TestCommonNameWordsAreNotKnown(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// A long encoded run is one candidate, not several meaningless ones: a
+// tracking id used to arrive as "AQH", "JzLm" and "Pq", three decisions for
+// one id (decision 72).
+func TestEncodedRunIsOneCandidate(t *testing.T) {
+	f := NewFinder(nil)
+	f.AddLines([]string{"https://mail.example.org/t/c/AQH3k9JzLm2Pq7Rt?utm_source=newsletter"})
+	c := f.Get(Key("AQH3k9JzLm2Pq7Rt"))
+	if c == nil || c.Reasons&MachineText == 0 {
+		t.Fatalf("the id should be one candidate, got %v", f.Candidates())
+	}
+	for _, part := range []string{"AQH", "JzLm", "Pq"} {
+		if f.Get(Key(part)) != nil {
+			t.Errorf("%q should not be a candidate of its own", part)
+		}
+	}
+}
+
+// Ordinary text is not an encoded run: a path, a slug and a query part keep
+// their words, and a long word without a digit stays a word.
+func TestOrdinaryTextIsNotEncoded(t *testing.T) {
+	for _, c := range []struct{ line, word string }{
+		{"see /people/oksana-vantreeck", "oksana"},
+		{"the spring-2026-newsletter is out", "newsletter"},
+		{"?utm_campaign=spring&utm_medium=email", "campaign"},
+		{"Donaudampfschifffahrtsgesellschaft", "Donaudampfschifffahrtsgesellschaft"},
+	} {
+		if got := encodedRuns(c.line); len(got) != 0 {
+			t.Errorf("%q: runs = %v, want none", c.line, got)
+		}
+		if !strings.Contains(c.line, c.word) {
+			t.Fatalf("bad case: %q lacks %q", c.line, c.word)
+		}
+	}
+}
+
+func TestTokensKeepWordsAroundARun(t *testing.T) {
+	line := "id AQH3k9JzLm2Pq7Rt then more words"
+	var got []string
+	for _, sp := range Tokens(line) {
+		got = append(got, line[sp[0]:sp[1]])
+	}
+	want := []string{"id", "AQH3k9JzLm2Pq7Rt", "then", "more", "words"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("tokens = %q, want %q", got, want)
+	}
+}
