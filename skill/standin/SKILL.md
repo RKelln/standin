@@ -69,8 +69,8 @@ The person does the steps marked **(person)**. You can run the others if you hav
      `Label: value` line, by label), `tables` (Markdown table columns, by header) and the free text,
      as counts only. Give `fields` and `tables` the same actions as columns. For the rest, add
      `"text": {"action": "words"}` (the word check: names and unusual words become stand-ins like
-     `[NAME_1]`, except words the person keeps) or `{"action": "drop"}`. Add
-     `"keep_groups": ["calendar"]` to keep day and month names. You cannot name a word to keep:
+     `[NAME_1]`, except words the person keeps) or `{"action": "drop"}`. Day and month names are kept
+     by default; write `"keep_groups": []` inside `text` to swap them too. You cannot name a word to keep:
      you never see the words, and that is on purpose. For case notes about people's lives, prefer
      `drop`.
 4. **(person)** Runs `standin review` to read the rules as a plain table. (You may run it too. For

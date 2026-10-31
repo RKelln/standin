@@ -207,7 +207,7 @@ func TestApproveNeedsTerminal(t *testing.T) {
 	if m, _ := filepath.Glob(filepath.Join(p.home, "projects", "*", "approval.json")); len(m) > 0 {
 		t.Fatal("approval written after a no")
 	}
-	if !strings.Contains(r.stdout, "Keep Invoice in raw/invoices.csv?") {
+	if !strings.Contains(r.stdout, "Keep Invoice, Amount in raw/invoices.csv?") {
 		t.Errorf("question: %s", r.stdout)
 	}
 }

@@ -495,7 +495,7 @@ func runScrub(c *ctx) error {
 		c.msg("Scan columns: I swapped values I already know and patterns (emails, phone numbers, long numbers, postal codes). Names I do not know stay in. Read those columns before you share them.")
 	}
 	if r.finder != nil {
-		c.msg("Free text: %d different words became stand-ins like [NAME_1], plus known values and patterns. Words I did not flag stay in, such as a name that is also a common word written in lower case. Read the text before you share it.", len(swappedWords))
+		c.msg("Free text, this run: %d different words became stand-ins like [NAME_1] (words you kept in approve are not counted), plus known values and patterns. Words I did not flag stay in, such as a name that is also a common word written in lower case. Read the text before you share it.", len(swappedWords))
 		if n := len(r.newWords()); n > 0 {
 			c.warn("%d new word(s) in the free text became stand-ins. To keep any of them, run `standin approve` yourself, in your own terminal.", n)
 		}

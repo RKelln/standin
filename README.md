@@ -106,6 +106,9 @@ the rest of it alone.
   name elsewhere; and a person told apart by a story or a rare detail. For
   case notes and other text about people's lives, `drop` the text. Only English and French are
   checked well; tested on invented text only.
+- **First names in text and full names in columns are not linked.** "Leila" in an email becomes
+  `[NAME_3]`, while "Leila Haddad" in a column is `[PERSON_1]`. The AI cannot tell they are the same
+  person. Linking them would also merge two different Leilas, so Standin does not.
 - **Headers:** a column header that is a first name and also a common word (Grace, Rose) still shows
   in the shape file.
 - **Patterns:** stand-ins still show which rows share a value, and how often.

@@ -71,12 +71,23 @@ func (f *File) KeepsGroup(g string) bool {
 	if f == nil || f.Text == nil || f.Text.Action != Words {
 		return false
 	}
-	for _, k := range f.Text.KeepGroups {
+	for _, k := range f.Text.Groups() {
 		if k == g {
 			return true
 		}
 	}
 	return false
+}
+
+// Groups are the word groups the text rule keeps. With no "keep_groups"
+// the calendar group is kept: day and month names are almost never private,
+// and forgetting the line turns "Friday 10am" into [NAME_7]. An empty list
+// ("keep_groups": []) keeps nothing.
+func (t *Text) Groups() []string {
+	if t.KeepGroups == nil {
+		return []string{"calendar"}
+	}
+	return t.KeepGroups
 }
 
 // UsesWords reports whether the rule asks for the word check on its text.
@@ -121,6 +132,9 @@ func Parse(b []byte) (*Config, error) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
 		msg := err.Error()
+		if strings.Contains(msg, `unknown field "keep_groups"`) {
+			return nil, bad(`"keep_groups" goes inside "text": {"action": "words", "keep_groups": [...]}, not at the top of a file rule.`)
+		}
 		if strings.Contains(msg, "unknown field") {
 			return nil, bad("it has a name I do not know (%s).", strings.TrimPrefix(msg, "json: "))
 		}

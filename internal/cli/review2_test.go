@@ -62,7 +62,7 @@ const wordsCfg = `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"wo
 // shows up, also in lower case inside a link, and approve still asks about it.
 func TestKnownOneWordNameSwappedInLinks(t *testing.T) {
 	p := newTP(t)
-	p.write("standin.config.json", wordsCfg)
+	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"words","keep_groups":[]}}]}`)
 	p.write("raw/a.md", "Hi Oksana, thanks.\n")
 	if r := p.run("yes\n\nyes\n", true, "approve"); r.code != 0 {
 		t.Fatalf("approve: %+v", r)

@@ -438,3 +438,24 @@ review words; one name word left ("faith", in lower case). Binary 3.43 MB to 3.9
     a settings file, and when it takes hooks out of a shared `settings.json` it says others must run
     `standin init` themselves. Terminal checks also refuse the null device. The text shape file says
     it shows field labels and table headers (a surname that is also a word would show).
+
+### From the second trial (2026-10-31)
+
+Six suggestions from a trial on a made-up shop folder. Weighed for general use, not one deployment.
+
+53. **Calendar words are kept by default** in the word check. A missing `keep_groups` means
+    `["calendar"]`; `"keep_groups": []` turns it off. Why: nearly every text has days and months, and
+    forgetting the line made "Friday 10am" into stand-ins. A name spot still beats it ("Hi April"),
+    and approve still asks the person about the calendar keep.
+54. **No link from a first name in text to a full name in a column.** "Leila" in text stays `[NAME_n]`;
+    "Leila Haddad" in a column stays `[PERSON_n]`. Why: linking merges two different people with the
+    same first name, and a wrong merge is worse for the AI's reading than a split. Documented in the
+    README. Reconsider if a person asks for an opt-in at approve.
+55. **A top-level `keep_groups` says it belongs inside `text`.**
+56. **Approve asks one question per file rule for keeps, and one for scans**, naming each column,
+    not one per column. The word pages are unchanged. Why: twenty "type yes" prompts get typed
+    without reading. Cost: one yes covers several columns, so the question lists every name.
+57. **The scrub summary says "this run" and that kept words are not counted.** The second scrub's
+    smaller count was right: the person had kept words at approve. Shape still writes one file per
+    raw file; grouping files that look alike is not done (the per-file counts differ, and a merged
+    file hides which file a count came from).

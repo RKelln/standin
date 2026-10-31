@@ -50,7 +50,7 @@ func rowsKeepsFirst(cfg *config.Config) []reviewRow {
 				}
 			}
 			if t := f.Text; t != nil && t.Action == a {
-				rows = append(rows, reviewRow{f.Match, "(free text)", "the free text", config.Column{Action: t.Action, Reason: t.Reason}, t.KeepGroups})
+				rows = append(rows, reviewRow{f.Match, "(free text)", "the free text", config.Column{Action: t.Action, Reason: t.Reason}, t.Groups()})
 			}
 		}
 	}
@@ -214,14 +214,33 @@ func runApprove(c *ctx) error {
 		return a == "yes" || a == "y", nil
 	}
 	var keeps, scans, texts []string
+	// One question for all the keeps (or scans) in a file rule, so a long
+	// config is a few questions, not one per column. The question names each.
+	type groupKey struct{ action, match string }
+	grouped := map[groupKey][]string{}
+	for _, r := range rowsKeepsFirst(cfg) {
+		if r.col.Action == config.Keep || r.col.Action == config.Scan {
+			k := groupKey{r.col.Action, r.match}
+			grouped[k] = append(grouped[k], r.name)
+		}
+	}
+	asked := map[groupKey]bool{}
 	for _, r := range rowsKeepsFirst(cfg) {
 		var qs []string
 		verb := ""
 		switch r.col.Action {
-		case config.Keep:
-			qs, verb = []string{fmt.Sprintf("Keep %s in %s? The AI will see these real values.", r.name, r.match)}, "keeping"
-		case config.Scan:
-			qs, verb = []string{fmt.Sprintf("Scan %s in %s? It is free text: names Standin does not know stay in, and the AI will see them.", r.name, r.match)}, "scanning"
+		case config.Keep, config.Scan:
+			k := groupKey{r.col.Action, r.match}
+			if !asked[k] {
+				asked[k] = true
+				list := strings.Join(grouped[k], ", ")
+				if r.col.Action == config.Keep {
+					qs, verb = []string{fmt.Sprintf("Keep %s in %s? The AI will see these real values.", list, r.match)}, "keeping"
+				} else {
+					qs, verb = []string{fmt.Sprintf("Scan %s in %s? It is free text: names Standin does not know stay in, and the AI will see them.", list, r.match)}, "scanning"
+				}
+				r.name = list
+			}
 		case config.Words:
 			verb = "the word check on"
 			qs = []string{fmt.Sprintf("Use the word check on the free text in %s? Names and unusual words become stand-ins, except words you keep below. Words Standin does not flag stay in, and the AI will see them.", r.match)}

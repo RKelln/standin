@@ -264,7 +264,7 @@ func TestTextDefaults(t *testing.T) {
 func TestCalendarSwappedUnlessKept(t *testing.T) {
 	p := newTP(t)
 	p.write("raw/a.md", "Open on Monday and Tuesday. Kofi works Monday.\n")
-	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"words"}}]}`)
+	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"words","keep_groups":[]}}]}`)
 	if r := p.run("yes\n\nyes\n", true, "approve"); r.code != 0 {
 		t.Fatalf("approve: %+v", r)
 	}
@@ -297,5 +297,31 @@ func TestTextRefusedFiles(t *testing.T) {
 		if p.exists("scrubbed") {
 			t.Errorf("%s: wrote output", name)
 		}
+	}
+}
+
+// Day and month names are kept unless the rule says "keep_groups": [].
+func TestCalendarKeptByDefault(t *testing.T) {
+	p := newTP(t)
+	p.write("raw/a.md", "Open on Monday and Tuesday.\n")
+	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"words"}}]}`)
+	if r := p.run("yes\nyes\nyes\n", true, "approve"); r.code != 0 {
+		t.Fatalf("approve: %+v", r)
+	}
+	if r := p.run("", false, "scrub"); r.code != 0 {
+		t.Fatalf("scrub: %+v", r)
+	}
+	if got := p.read("scrubbed/a.md"); got != "Open on Monday and Tuesday.\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestKeepGroupsAtTopLevelSaysWhere(t *testing.T) {
+	p := newTP(t)
+	p.write("raw/a.md", "Hello.\n")
+	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.md","keep_groups":["calendar"],"text":{"action":"words"}}]}`)
+	r := p.run("", false, "review")
+	if r.code != 2 || !strings.Contains(r.stdout+r.stderr, `inside "text"`) {
+		t.Errorf("want a hint: %+v", r)
 	}
 }
