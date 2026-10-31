@@ -40,14 +40,19 @@ func runReport(c *ctx) error {
 	case err != nil:
 		p("- Config: present, refused (%s)", fail.Code(err))
 	default:
-		counts := map[string]int{}
+		counts, texts := map[string]int{}, map[string]int{}
 		for _, f := range cfg.Files {
-			for _, col := range f.Columns {
-				counts[col.Action]++
+			for _, cols := range []map[string]config.Column{f.Columns, f.Fields, f.Tables} {
+				for _, col := range cols {
+					counts[col.Action]++
+				}
+			}
+			if f.Text != nil {
+				texts[f.Text.Action]++
 			}
 		}
-		p("- Config: %d file rule(s); columns: %d keep, %d tokenize, %d scan, %d drop",
-			len(cfg.Files), counts[config.Keep], counts[config.Tokenize], counts[config.Scan], counts[config.Drop])
+		p("- Config: %d file rule(s); columns, fields and table columns: %d keep, %d tokenize, %d scan, %d drop; free text: %d words, %d drop",
+			len(cfg.Files), counts[config.Keep], counts[config.Tokenize], counts[config.Scan], counts[config.Drop], texts[config.Words], texts[config.Drop])
 	}
 
 	privDir, perr := store.PrivateDir(c.project, c.private, c.env.Getenv("STANDIN_HOME"))

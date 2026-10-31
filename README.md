@@ -38,7 +38,7 @@ standin init                 # makes raw/ shape/ scrubbed/ restored/, sets up Cl
 standin shape                # describes each file for the AI, with no real values
 # ask the AI to read shape/ and write standin.config.json
 standin review               # read the rules as a table
-standin approve              # you say yes to each column the AI will see for real
+standin approve              # you say yes to each column the AI will see for real, and pick words to keep
 standin scrub                # writes scrubbed/ for the AI; the mapping goes to ~/.standin
 # the AI works on scrubbed/ and writes its answer with stand-ins
 standin restore answer.md    # puts the real values back, into restored/, for you
@@ -54,7 +54,26 @@ standin show PERSON_9        # prints who a stand-in is, on your screen only
 - `standin show PERSON_9` (or `[PERSON_9]`) prints the real value behind a stand-in. It prints only to your
   screen, never to a pipe or an AI tool, and the guard hooks stop an AI from running it.
 
-Files in: CSV, TSV and JSON (UTF-8, UTF-16, Windows-1252). Not yet: Excel, OFX/QFX, PDF. Save as CSV first.
+Files in: CSV, TSV and JSON (UTF-8, UTF-16, Windows-1252), and free text in `.md` and `.txt`. Not yet:
+Excel, OFX/QFX, PDF, email files (`.eml`, `.mbox`). Save as CSV, or paste emails into a `.md` file, first.
+
+### Free text (`.md` and `.txt`)
+
+- `Label: value` lines (`From:`, `Date:`, `Attendees:`) are **fields**, and Markdown tables are
+  **columns**. They follow the same rules as CSV columns.
+- The rest gets the **word check**: Standin picks out words that may be private (a *candidate* is
+  such a word): words that are not English words, words after Hi, Dear or Thanks, sign-offs, first
+  names, emails, phone numbers and values it already knows. Each one becomes a stand-in like
+  `[NAME_1]`, unless you keep it. Other words stay. Markdown marks stay as they are.
+- The AI never sees a candidate word. The shape file and `standin review` give counts only.
+- `standin approve` shows you the new words on your screen, 20 at a time, each with a short piece of
+  the text: first the unusual words (brands, streets, short forms: most words worth keeping are
+  here), then the words that look like names. You type the numbers of the words to keep. Your
+  choices go in `words.json` in the private folder. It holds names, so it is as secret as the
+  mapping. If it changes, approve again.
+- A word that is new since you last approved becomes a stand-in, and scrub says how many (exit 1).
+- A `.txt` that is really a table is refused: rename it to `.csv`. A file mostly in a script with no
+  capital letters (Chinese, Arabic ...) is refused: Standin cannot find names in it.
 
 ### The guard hooks (Claude Code)
 
@@ -77,8 +96,15 @@ the rest of it alone.
 
 ## What it misses
 
-- **Names inside free text** (notes, bank descriptions) are swapped only if Standin already knows them
-  from a tokenized column. Other names stay. Read scan columns before you share them.
+- **Names inside CSV and JSON free text** (`scan` columns: notes, bank descriptions) are swapped only if
+  Standin already knows them from a tokenized column. Other names stay. Read scan columns before you
+  share them.
+- **The word check on `.md` and `.txt` misses:** a name that is also a common word, typed in lower
+  case (rich, grace, will) or only at the start of a sentence ("Rose called"); a surname that is a
+  word, with no first name or title next to it; business names made of words (City Hardware); names
+  inside links and handles (`@grace_lee`); and a person told apart by a story or a rare detail. For
+  case notes and other text about people's lives, `drop` the text. Only English and French are
+  checked well; tested on invented text only.
 - **Patterns:** stand-ins still show which rows share a value, and how often.
 - **Combinations** (a postal code plus a job plus a date) can still point to one person.
 - **The guard hooks are a safety net, not a wall.** A shell script can still read `raw/`. Hooks do not see
@@ -87,4 +113,5 @@ the rest of it alone.
 
 Read `docs/DESIGN.md` for the design and its decisions, and `skill/standin/SKILL.md` for agent instructions.
 
-MIT licence, for code and docs.
+MIT licence, for code and docs. The built-in word lists (SCOWL, Ontario and Quebec baby names) have
+their own notices: see `THIRD_PARTY.md`, or run `standin licences`.

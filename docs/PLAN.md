@@ -25,7 +25,8 @@ Agents do not commit; the orchestrator reviews and commits.
 - No package that can open a network connection is linked (`net`, `net/http`, `net/rpc`, `crypto/tls`...).
   A test checks `go list -deps ./cmd/standin`.
 - Fail closed: on any parse error or doubt, write no output file and say why. Exit 2.
-- Default-deny: a value is tokenized unless the approved config says `keep` (or `scan`, for free text).
+- Default-deny: a value is tokenized unless the approved config says `keep` (or `scan`, for free text;
+  or the word check, for `.md`/`.txt` text, where a candidate word stays only if the person keeps it).
 - No command ever prints a real value from a tokenized column, except `restore` (which writes for the
   person, into `restored/` or stdout when asked).
 - Messages near grade 6. Errors say what happened and what to do next.
@@ -46,8 +47,8 @@ Agents do not commit; the orchestrator reviews and commits.
 ```
 
 Private store (the secret), outside the project so tools working in the project do not see it:
-`$STANDIN_HOME/projects/<folder-name>-<first 8 hex of sha256(abs path)>/` with `mapping.json` and
-`approval.json`. `STANDIN_HOME` defaults to `~/.standin`. `--private DIR` overrides. Created `0700`,
+`$STANDIN_HOME/projects/<folder-name>-<first 8 hex of sha256(abs path)>/` with `mapping.json`,
+`approval.json` and (v0.2, free text) `words.json`. `STANDIN_HOME` defaults to `~/.standin`. `--private DIR` overrides. Created `0700`,
 files `0600`. Every command that uses it prints its path once.
 
 ### Commands
@@ -56,8 +57,10 @@ files `0600`. Every command that uses it prints its path once.
 standin shape  [--project DIR] FILE...        raw/x.csv -> shape/x.csv.shape.md
 standin review [--project DIR]                print the config as a plain table (keeps first)
 standin approve [--project DIR]               needs a terminal (stdin is a TTY); asks yes per `keep`
-                                              and per `scan`;
-                                              stores sha256 of the config in approval.json
+                                              and per `scan` (and per word check and kept group);
+                                              stores sha256 of the config in approval.json. With a
+                                              word check: stdout must be a TTY too; shows new words
+                                              to keep (v0.2, see "Free text")
 standin scrub  [--project DIR] [FILE...]      raw/** (or FILEs) -> scrubbed/<same path>; updates mapping
 standin restore [--project DIR] FILE... | -   scrubbed-style text -> restored/<same path>, or stdout for -
 standin check  [--project DIR] FILE... | -    finds real values (from mapping) and PII patterns; on a
@@ -69,30 +72,35 @@ standin show [--project DIR] STANDIN...      real value of each stand-in (PERSON
 standin report [--project DIR]                a data-free issue report (version, OS, file kinds, shapes,
                                               last errors) to stdout
 standin version
+standin licences                              notices of the built-in word lists (v0.2)
 ```
 
 `scrub` without an approval whose hash matches the current config, when the config has any `keep` or
-`scan`: it refuses (exit 2), writes nothing (not even the mapping) and says to run `standin approve` in
-the person's own terminal (v0.2, decision 33; v0.1.0 tokenized them as `VALUE` and warned). Changing the
-config voids the approval. A config with no `keep` and no `scan` needs no approval.
+`scan` (or a word check, v0.2): it refuses (exit 2), writes nothing (not even the mapping) and says to run
+`standin approve` in the person's own terminal (v0.2, decision 33; v0.1.0 tokenized them as `VALUE` and
+warned). Changing the config voids the approval; so does a changed or missing `words.json` when the config
+has a word check. A config with no `keep`, no `scan` and no word check needs no approval.
 
 ### Input formats (MVP)
 
-- CSV and TSV: delimiter by extension (`.csv` comma, `.tsv` tab); `.txt` refused. Strip UTF-8 BOM. Not
+- CSV and TSV: delimiter by extension (`.csv` comma, `.tsv` tab). Strip UTF-8 BOM. Not
   valid UTF-8: decode as Windows-1252 only if the bytes fit it, and say so; UTF-16 with BOM decoded.
   Ragged rows (field count differs from header): refuse with the line number.
 - JSON: an array of objects, or an object whose values are objects ("object of records": its keys are
   data, category `KEY`). Nested objects flatten to dotted paths (`address.city`); arrays of scalars or
   objects inside a record use `[]` (`items[].name`). Anything else: refuse.
+- Free text (v0.2): `.md`, `.markdown` and `.txt`, same encodings. See "Free text" below. A `.txt` that
+  parses as a CSV or TSV table (3+ rows, 2+ columns, all the same width) is refused: "rename it to .csv
+  or .tsv".
 - Anything else (PDF, images, xlsx, docx, unknown): refuse, "Save it as CSV, or remove private details
-  by hand." Later: OFX/QFX, QuickBooks exports, xlsx.
+  by hand." Later: OFX/QFX, QuickBooks exports, xlsx, `.eml`/`.mbox` (hand-parsed: `net/mail` links `net`).
 
 ### Stand-ins
 
 - Format `[CATEGORY_N]`: `CATEGORY` is `[A-Z]+`, `N` starts at 1 per category. Regex
   `\[[A-Z]+_[1-9][0-9]*\]`. Brackets make `[PERSON_1]` and `[PERSON_12]` unambiguous.
-- Categories: `PERSON ORG EMAIL PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE` (unknown category in config:
-  refuse). Unmentioned columns use `VALUE`.
+- Categories: `PERSON ORG EMAIL PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE NAME` (unknown category in
+  config: refuse). Unmentioned columns use `VALUE`. `NAME` (v0.2) is a word the word check swapped.
 - Key: category + normalised value (lowercase, trim, collapse inner whitespace, strip trailing `.,;:`).
   The same normalised value always gets the same stand-in, across all files in a project.
 - The mapping keeps every original spelling per stand-in (first one first). Restore puts back the first
@@ -130,6 +138,11 @@ config voids the approval. A config with no `keep` and no `scan` needs no approv
   follow a re-ordered export.
   Free-text-looking columns (avg > 40 chars or many spaces) absent from the config: `drop`, and warn.
 - Unknown keys or actions: refuse.
+- Text files (v0.2): a rule may also have `fields` and `tables` (maps like `columns`, same actions and
+  checks, no `[COLUMN_n]`) and `text`: `{"action": "words"|"drop", "keep_groups": ["calendar"], "reason": ...}`.
+  `keep_groups` only with `words`, only built-in groups (now just `calendar`): the config never names a
+  word. No `text` rule: the text is dropped (warn). `fields`/`tables`/`text` on a CSV/JSON file, or
+  `columns` on a text file: ignored, with a warning.
 
 ### Scan pass (`scan` columns and `check`)
 
@@ -193,6 +206,52 @@ trimming). Two inputs that would land on the same `restored/` name: refuse. Exit
     followed by an uncommon capitalised word (`Bill Gatesby`). Scrub also swaps a header equal to a value
     already in the mapping.
 
+### Free text (v0.2, track F; DESIGN 38-44, research `docs/research/free-text.md`)
+
+- **Structure first.** A Markdown table (a line with `|`, then a `|---|` line with the same cell count;
+  rows follow while lines hold `|`) gives one column per header, `Source` "table N"; a ragged row refuses
+  with its line number. A `Label: value` line (optional `- ` and `**`; label 1-3 words, starts with a
+  capital, at most 30 characters, every word a common header word or an English word that is not a first
+  name, not data-like by `LooksLikeDataName`; value not starting `//`) is a field, one column per label.
+  Everything else is free text. Output keeps every byte that is not swapped (line endings, table layout,
+  Markdown marks).
+- **Refusals.** Lone CR; stand-in-shaped text anywhere (scrub); more than 20% of letters (and 10 or more)
+  in a script with no capitals.
+- **Candidates** (package `internal/words`): in free text and `scan` fields, a word of 2+ letters outside
+  known-value and pattern hits (a one-word `NAME` value is not such a hit: it goes through the rules
+  again), when one of: after Hi, Hello, Dear, Thanks, Cheers, from, with, cc, called ... (then nothing or
+  a comma); after a title (Mr Mrs Ms Mx Dr Mme M Prof, then nothing or a dot); after "name is", "this
+  is", "it's", "Name:", "Client:" ...; a sign-off (1-3 words alone on a line after "Thanks," "Regards,"
+  ... or after `--`); capitalised and not in the English list (day and month names here go to
+  `calendar`); capitalised, in the first-name list, not at a sentence or line start; lower case, 3+
+  letters, in the first-name list, not an English word or a day name, not after `. / @ _`; capitalised,
+  right after a word caught as a name with only spaces between; capitalised and a word of a tokenized,
+  not-free-text field value ("field part"); any word in a script with no capitals.
+- **Groups.** `calendar`: only the calendar reason. `name-like`: a name spot, sign-off, first name,
+  next-to-name or field part, or in the first-name list. `unusual`: the rest.
+- **Lists:** English = SCOWL size 60, Canadian, variant 1, lower-case entries only, no `'s` forms
+  (79,626 words); first names = Ontario + Quebec, single words, given 5+ times (22,409). gzip, `go:embed`,
+  `internal/words/lists/`, made by `tools/fetch_wordlists.py`; notices in `THIRD_PARTY.md`.
+- **Swap.** In free text and `scan` fields: known values and patterns as in the scan pass, then every word
+  whose key (lower case, `’`→`'`, `'s` off) is a candidate or on the swap list, unless kept (keep list, or
+  a calendar-only word where the rule keeps `calendar`). Swapped where it is capitalised or uncased, and
+  in lower case only when it is not an English word. `'s` stays outside: `[NAME_1]'s`.
+- **words.json** (private folder, 0600): `{"version":1,"note":"SECRET ...","keep":[...],"swap":[...]}`,
+  keys sorted. Only `approve` writes it. Unknown keys refuse.
+- **approval.json** adds `"texts": ["<match>:text"]` and `"words_sha256"` (sha256 of words.json as
+  written). A word check needs both to match.
+- **approve** with a word check: yes per word check and per kept group, then the new words (candidates in
+  neither list, not calendar-only): unusual first, then name-like, most used first, 20 a page, each with
+  its count and one context line (about 30 letters each side, the word in `[ ]`, other candidates, known
+  values and patterns as `▒▒▒`). The person types numbers to keep (`1 3 5-7`; Enter or `none` for none);
+  three bad answers refuse. Not picked: swap list. Then the final yes.
+- **scrub**: pass 1 also adds, for tokenized/dropped field values, the part before `<` and pattern hits.
+  New words are swapped, never kept; scrub then warns "N new word(s) ... run standin approve" (exit 1).
+  A word moved to keep marks its `NAME` row `"kept": true` in the mapping: it still restores, but
+  scans, check and the hooks no longer look for it.
+- **shape**: fields and table columns as column shapes; free text as count bands only (lines, unusual,
+  name-like, calendar, pattern kinds). **review**: count bands only, plus new words since approve.
+
 ## Order
 
 1. Now: R (running), A, C, D in parallel.
@@ -210,4 +269,4 @@ where they differ (unapproved scrub now refuses; hooks take no `--project`; `sho
 | Track | Owner | Output |
 |---|---|---|
 | G. Fixes 2-7 | builder agent | DESIGN 32-37, tests, smoke test updated |
-| F. Free text | research agent, then builder | `docs/research/free-text.md` (design, list licences, candidate counts on the Get2Know fixtures), then `.md`/`.txt` support |
+| F. Free text | research agent, then builder | `docs/research/free-text.md` (design, list licences, candidate counts on the Get2Know fixtures), then `.md`/`.txt` support (built; contract in "Free text" above) |

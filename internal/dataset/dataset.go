@@ -1,5 +1,7 @@
-// Package dataset reads the files Standin supports (CSV, TSV, JSON) into
-// columns of values, and writes them back with values changed.
+// Package dataset reads the files Standin supports (CSV, TSV, JSON, and
+// free text in .md and .txt) into columns of values, and writes them back
+// with values changed. In a text file, the columns are its "Label: value"
+// lines (fields) and its Markdown tables; the rest is free text.
 //
 // Anything it is not sure about, it refuses. It never puts a value from the
 // file into an error message.
@@ -39,13 +41,16 @@ type Dataset struct {
 	Columns   []string   // header names, or JSON paths like address.city
 	Values    [][]string // per column, every value ("" when empty)
 	Recs      [][]int    // per column, the row or record number (from 1) of each value
-	Rows      int
+	Rows      int        // rows, records, or lines of a text file
+	Source    []string   // text files: per column, FromField or "table N"
+	Tables    int        // text files: how many Markdown tables
 
 	comma   rune
 	header  []string
 	records [][]string
 	root    *jnode
 	colOf   map[string]int
+	lines   []textLine
 }
 
 // KindFor returns the kind for a file name, or a refusal.
@@ -57,6 +62,8 @@ func KindFor(path string) (string, error) {
 		return TSV, nil
 	case ".json":
 		return JSON, nil
+	case ".md", ".markdown", ".txt":
+		return Text, nil
 	case ".pdf":
 		return "", fail.New("unsupported", "I cannot read PDF files. "+RefuseHint)
 	case ".xlsx", ".xls", ".xlsm", ".ods", ".numbers":
@@ -65,8 +72,6 @@ func KindFor(path string) (string, error) {
 		return "", fail.New("unsupported", "I cannot read word processor files. "+RefuseHint)
 	case ".png", ".jpg", ".jpeg", ".gif", ".heic", ".webp", ".tif", ".tiff", ".bmp":
 		return "", fail.New("unsupported", "I cannot read images. "+RefuseHint)
-	case ".txt":
-		return "", fail.New("unsupported", "I do not know if this .txt file is a table. If it is, rename it to .csv (commas) or .tsv (tabs).")
 	}
 	return "", fail.New("unsupported", "I cannot read this kind of file. "+RefuseHint)
 }
@@ -81,7 +86,19 @@ func Load(path string) (*Dataset, error) {
 	if err != nil {
 		return nil, fail.New("read", "I could not read the file (%s).", fail.Reason(err))
 	}
-	return Parse(kind, b)
+	d, err := Parse(kind, b)
+	if err == nil && kind == Text && strings.ToLower(filepath.Ext(path)) == ".txt" && looksLikeTable(textOf(d)) {
+		return nil, fail.New("txt-table", "This .txt file looks like a table (the same number of commas or tabs on every line). Rename it to .csv (commas) or .tsv (tabs), then try again.")
+	}
+	return d, err
+}
+
+func textOf(d *Dataset) string {
+	var b strings.Builder
+	for _, l := range d.lines {
+		b.WriteString(l.raw + "\n")
+	}
+	return b.String()
 }
 
 // Parse parses file bytes of the given kind.
@@ -96,7 +113,7 @@ func Parse(kind string, b []byte) (*Dataset, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, fail.New("empty", "This file is empty.")
 	}
-	if (kind == CSV || kind == TSV) && hasLoneCR(text) {
+	if (kind == CSV || kind == TSV || kind == Text) && hasLoneCR(text) {
 		return nil, fail.New("lone-cr", "This file ends its lines in an old way (a lone carriage return, from old Mac programs), so I cannot tell where rows end. Open it in a text editor or spreadsheet and save it with normal line endings, then try again.")
 	}
 	var d *Dataset
@@ -107,6 +124,8 @@ func Parse(kind string, b []byte) (*Dataset, error) {
 		d, err = parseCSV(text, '\t')
 	case JSON:
 		d, err = parseJSON(text)
+	case Text:
+		d, err = parseText(text)
 	default:
 		return nil, fail.New("unsupported", "I cannot read this kind of file. "+RefuseHint)
 	}
@@ -159,12 +178,18 @@ type Rewriter struct {
 	// Name gets a header cell or JSON key (not an object-of-records key) and
 	// returns its new text, or the same text.
 	Name func(name string) string
+	// Text gets each free-text line of a text file (line index from 0) and
+	// returns its new text. Nil leaves the text as it is.
+	Text func(line int, s string) string
 }
 
 // Write returns the file with the rewriter applied, as UTF-8.
 func (d *Dataset) Write(rw Rewriter) ([]byte, error) {
 	if d.Kind == JSON {
 		return d.writeJSON(rw)
+	}
+	if d.Kind == Text {
+		return d.writeText(rw), nil
 	}
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
@@ -202,6 +227,9 @@ func (d *Dataset) Write(rw Rewriter) ([]byte, error) {
 func (d *Dataset) Where(col, i int) string {
 	if d.Kind == JSON {
 		return "record " + strconv.Itoa(d.Recs[col][i])
+	}
+	if d.Kind == Text {
+		return "line " + strconv.Itoa(d.Recs[col][i])
 	}
 	return "row " + strconv.Itoa(d.Recs[col][i])
 }

@@ -58,7 +58,7 @@ func TestDamagedRefused(t *testing.T) {
 		`not json`,
 		`{"version":2,"standins":[]}`,
 		`{"version":1,"standins":[{"standin":"[PERSON_1]","category":"ORG","key":"a","spellings":["A"]}]}`,
-		`{"version":1,"standins":[{"standin":"[NAME_1]","category":"NAME","key":"a","spellings":["A"]}]}`,
+		`{"version":1,"standins":[{"standin":"[NICK_1]","category":"NICK","key":"a","spellings":["A"]}]}`,
 		`{"version":1,"standins":[{"standin":"[PERSON_1]","category":"PERSON","key":"a","spellings":[]}]}`,
 		`{"version":1,"standins":[{"standin":"[PERSON_1]","category":"PERSON","key":"a","spellings":["A"]},{"standin":"[PERSON_1]","category":"PERSON","key":"b","spellings":["B"]}]}`,
 		`{"version":1,"extra":1,"standins":[]}`,

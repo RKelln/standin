@@ -65,6 +65,10 @@ func isName(w string) bool {
 
 func isCommon(w string) bool { return commonWords[strings.ToLower(w)] }
 
+// IsCommonHeaderWord reports whether w is on the list of words often found
+// in column headers and labels (name, date, amount ...).
+func IsCommonHeaderWord(w string) bool { return isCommon(w) }
+
 // LooksLikeData reports whether a header, JSON key or file name looks like a
 // private value: an email, a phone number, digits, or two words that read
 // like a name. kind is one of "email", "phone", "digits", "name".

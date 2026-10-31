@@ -55,7 +55,7 @@ func TestBadQuoteRefused(t *testing.T) {
 }
 
 func TestUnsupportedRefused(t *testing.T) {
-	for _, n := range []string{"a.pdf", "a.xlsx", "a.docx", "a.txt", "a.png", "a", "a.xml"} {
+	for _, n := range []string{"a.pdf", "a.xlsx", "a.docx", "a.png", "a", "a.xml"} {
 		if _, err := KindFor(n); err == nil {
 			t.Errorf("%s: want a refusal", n)
 		}

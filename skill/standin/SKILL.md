@@ -54,7 +54,8 @@ The person does the steps marked **(person)**. You can run the others if you hav
 3. Read the shape file only. Propose the config: for each column pick one action and give a
    short reason.
    - `tokenize` (swap each value for a stand-in). Needs a `category`: `PERSON`, `ORG`,
-     `EMAIL`, `PHONE`, `ACCOUNT`, `ID`, `ADDRESS`, `POSTAL`, `KEY` or `VALUE`.
+     `EMAIL`, `PHONE`, `ACCOUNT`, `ID`, `ADDRESS`, `POSTAL`, `KEY` or `VALUE` (`NAME` is the
+     category the word check uses).
    - `keep` (leave the real value). Only for values you need that are not private, like
      amounts, dates or a status. Every `keep` is a choice to show real data, so keep few.
    - `drop` (empty the column). For things not needed.
@@ -64,13 +65,24 @@ The person does the steps marked **(person)**. You can run the others if you hav
      the work a bit harder.
    - If the shape file says a header looks like data, or says to rename the file, tell the
      person.
-4. **(person)** Runs `standin review` to read the rules as a plain table.
+   - **Text files (`.md`, `.txt`)** have no `columns`. Their shape file lists `fields` (each
+     `Label: value` line, by label), `tables` (Markdown table columns, by header) and the free text,
+     as counts only. Give `fields` and `tables` the same actions as columns. For the rest, add
+     `"text": {"action": "words"}` (the word check: names and unusual words become stand-ins like
+     `[NAME_1]`, except words the person keeps) or `{"action": "drop"}`. Add
+     `"keep_groups": ["calendar"]` to keep day and month names. You cannot name a word to keep:
+     you never see the words, and that is on purpose. For case notes about people's lives, prefer
+     `drop`.
+4. **(person)** Runs `standin review` to read the rules as a plain table. (You may run it too. For
+   text files it shows only counts of words.)
 5. **(person)** Runs `standin approve` in their own terminal. It asks them yes or no for each
-   `keep` and each `scan`. You cannot do this step, and you should not try. If the config changes later, they
+   `keep`, each `scan` and each word check, and shows them the words in text files to pick the
+   ones to keep. You cannot do this step, and you should not try. If the config changes later, they
    must approve again.
 6. Run `standin scrub` (or ask the person to). It writes the files in `scrubbed/`. If the config
-   has a `keep` or `scan` that is not approved yet, scrub stops and writes nothing: ask the person
-   to run `standin approve`.
+   has a `keep`, `scan` or word check that is not approved yet, scrub stops and writes nothing: ask
+   the person to run `standin approve`. If it says new words became stand-ins (exit 1), the
+   scrubbed files are fine to use; tell the person they can run `standin approve` to keep any.
 7. If a step says no and stops (exit code 2), read the message, fix the cause, and try again.
    Do not try to get around it.
 
@@ -88,8 +100,11 @@ The person does the steps marked **(person)**. You can run the others if you hav
 
 Standin lowers what you see. It does not make data safe to share. Know its gaps:
 
-- Free text: a name that is not already in the mapping stays in the text. So does an address
-  written in words.
+- Free text in CSV and JSON `scan` columns: a name that is not already in the mapping stays in
+  the text. So does an address written in words.
+- Text files with the word check: a name that is also a common word can stay, when it is in lower
+  case or starts a sentence ("Rose called"). So can a surname that is a word, a business name made
+  of words, and a name inside a link. Do not guess who a `[NAME_n]` is.
 - Kept columns show real values, by design.
 - Patterns stay visible: how often a stand-in appears, which ones go together, amounts and
   dates that were kept. Someone could sometimes guess who a stand-in is from this.

@@ -56,15 +56,36 @@ func TestHashChangesWithAnyEdit(t *testing.T) {
 	}
 }
 
+func TestTextRules(t *testing.T) {
+	c, err := Parse([]byte(`{"version":1,"files":[{"match":"raw/*.md",
+		"fields":{"Date":{"action":"keep"},"From":{"action":"tokenize","category":"PERSON"}},
+		"tables":{"Price":{"action":"keep"}},
+		"text":{"action":"words","keep_groups":["calendar"],"reason":"emails"}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := c.RuleFor("raw/a.md")
+	if !f.UsesWords() || !f.KeepsGroup("calendar") || f.KeepsGroup("other") {
+		t.Errorf("text rule: %+v", f.Text)
+	}
+	if strings.Join(f.FieldNames(), ",") != "Date,From" || strings.Join(f.TableNames(), ",") != "Price" {
+		t.Errorf("order: %v %v", f.FieldNames(), f.TableNames())
+	}
+	d, _ := Parse([]byte(`{"version":1,"files":[{"match":"raw/*.md","text":{"action":"drop"}}]}`))
+	if d.Files[0].UsesWords() || d.Files[0].KeepsGroup("calendar") {
+		t.Error("drop is not the word check")
+	}
+}
+
 func TestRefusals(t *testing.T) {
 	bad := map[string]string{
 		"unknown action":     `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"hide"}}}]}`,
-		"unknown category":   `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"tokenize","category":"NAME"}}}]}`,
+		"unknown category":   `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"tokenize","category":"NICKNAME"}}}]}`,
 		"no category":        `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"tokenize"}}}]}`,
 		"category with keep": `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"keep","category":"PERSON"}}}]}`,
 		"keep by position":   `{"version":1,"files":[{"match":"raw/*.csv","columns":{"[COLUMN_2]":{"action":"keep"}}}]}`,
 		"scan by position":   `{"version":1,"files":[{"match":"raw/*.csv","columns":{"[COLUMN_2]":{"action":"scan"}}}]}`,
-		"drop bad category":  `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"drop","category":"NAME"}}}]}`,
+		"drop bad category":  `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"drop","category":"NICKNAME"}}}]}`,
 		"unknown key":        `{"version":1,"files":[{"match":"raw/*.csv","colums":{}}]}`,
 		"unknown col key":    `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"keep","why":"x"}}}]}`,
 		"no action":          `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{}}}]}`,
@@ -76,6 +97,16 @@ func TestRefusals(t *testing.T) {
 		"dup column":         `{"version":1,"files":[{"match":"raw/*.csv","columns":{"A":{"action":"keep"},"A":{"action":"drop"}}}]}`,
 		"key drop":           `{"version":1,"files":[{"match":"raw/*.json","columns":{"(key)":{"action":"drop"}}}]}`,
 		"key category":       `{"version":1,"files":[{"match":"raw/*.json","columns":{"(key)":{"action":"tokenize","category":"PERSON"}}}]}`,
+		"text bad action":    `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"scan"}}]}`,
+		"text no action":     `{"version":1,"files":[{"match":"raw/*.md","text":{}}]}`,
+		"text unknown key":   `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"words","keep_words":["shimano"]}}]}`,
+		"group not built in": `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"words","keep_groups":["shimano"]}}]}`,
+		"groups with drop":   `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"drop","keep_groups":["calendar"]}}]}`,
+		"field bad action":   `{"version":1,"files":[{"match":"raw/*.md","fields":{"From":{"action":"hide"}}}]}`,
+		"field by position":  `{"version":1,"files":[{"match":"raw/*.md","fields":{"[COLUMN_1]":{"action":"tokenize","category":"PERSON"}}}]}`,
+		"table no category":  `{"version":1,"files":[{"match":"raw/*.md","tables":{"Price":{"action":"tokenize"}}}]}`,
+		"dup field":          `{"version":1,"files":[{"match":"raw/*.md","fields":{"A":{"action":"keep"},"A":{"action":"drop"}}}]}`,
+		"field unknown key":  `{"version":1,"files":[{"match":"raw/*.md","fields":{"A":{"action":"keep","words":true}}}]}`,
 	}
 	for name, b := range bad {
 		if _, err := Parse([]byte(b)); err == nil {

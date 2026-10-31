@@ -345,35 +345,40 @@ func Markdown(d *dataset.Dataset, shownPath, version string) string {
 	b.WriteString("## Columns\n\n")
 	for _, c := range Columns(d) {
 		fmt.Fprintf(&b, "### %d. %s\n\n", c.Index+1, mdCode(c.Label))
-		if c.HeaderFlag != "" {
-			what := map[string]string{"email": "an email address", "phone": "a phone number", "digits": "a number",
-				"name": "a person's name", "empty": "nothing (the header is blank)"}[c.HeaderFlag]
-			if c.HeaderFlag == "empty" {
-				fmt.Fprintf(&b, "- Header: blank. In the config, call this column `%s`.\n", c.Label)
-			} else {
-				fmt.Fprintf(&b, "- **Header hidden:** it looks like %s, so it may be private data. In the config, call this column `%s`. Standin will swap the header for a stand-in too.\n", what, c.Label)
-			}
-		}
-		if c.IsKey {
-			b.WriteString("- These are the names of the records in the top JSON object. They are data. Standin swaps them for `[KEY_n]` stand-ins unless the config says `keep`.\n")
-		}
-		fmt.Fprintf(&b, "- Looks like: %s\n", c.Kind)
-		fmt.Fprintf(&b, "- Empty: %s\n", shareBand(c.Empty, c.Values))
-		fmt.Fprintf(&b, "- Different values: %s\n", CountBand(c.Distinct))
-		fmt.Fprintf(&b, "- Length: %s\n", lengthRange(c))
-		if c.LooksFreeText() {
-			b.WriteString("- Reads like free text. If the config leaves it out, Standin drops it.\n")
-		}
-		if len(c.Shapes) > 0 {
-			b.WriteString("- Shapes of the values:\n")
-			for _, s := range c.Shapes {
-				fmt.Fprintf(&b, "  - %s: %s\n", s.Shape, CountBand(s.Count))
-			}
-		}
-		b.WriteString("\n")
+		writeColumn(&b, c)
 	}
 	b.WriteString(ConfigHelp)
 	return b.String()
+}
+
+// writeColumn writes the facts about one column (no heading).
+func writeColumn(b *strings.Builder, c ColumnInfo) {
+	if c.HeaderFlag != "" {
+		what := map[string]string{"email": "an email address", "phone": "a phone number", "digits": "a number",
+			"name": "a person's name", "empty": "nothing (the header is blank)"}[c.HeaderFlag]
+		if c.HeaderFlag == "empty" {
+			fmt.Fprintf(b, "- Header: blank. In the config, call this column `%s`.\n", c.Label)
+		} else {
+			fmt.Fprintf(b, "- **Header hidden:** it looks like %s, so it may be private data. In the config, call this column `%s`. Standin will swap the header for a stand-in too.\n", what, c.Label)
+		}
+	}
+	if c.IsKey {
+		b.WriteString("- These are the names of the records in the top JSON object. They are data. Standin swaps them for `[KEY_n]` stand-ins unless the config says `keep`.\n")
+	}
+	fmt.Fprintf(b, "- Looks like: %s\n", c.Kind)
+	fmt.Fprintf(b, "- Empty: %s\n", shareBand(c.Empty, c.Values))
+	fmt.Fprintf(b, "- Different values: %s\n", CountBand(c.Distinct))
+	fmt.Fprintf(b, "- Length: %s\n", lengthRange(c))
+	if c.LooksFreeText() {
+		b.WriteString("- Reads like free text. If the config leaves it out, Standin drops it.\n")
+	}
+	if len(c.Shapes) > 0 {
+		b.WriteString("- Shapes of the values:\n")
+		for _, s := range c.Shapes {
+			fmt.Fprintf(b, "  - %s: %s\n", s.Shape, CountBand(s.Count))
+		}
+	}
+	b.WriteString("\n")
 }
 
 func mdCode(s string) string {
@@ -390,7 +395,7 @@ const ConfigHelp = "## How to write the config\n\n" +
 	"- `keep`: leave the real values as they are. Use it only when the work needs the real value and it is not private (amounts, dates, status words). A person must approve every keep and every scan.\n" +
 	"- `drop`: blank the value. Use it for things the work does not need. It may have a `category`; Standin still swaps that value where it shows up in scan text.\n" +
 	"- `scan`: free text. Standin swaps known values and patterns (emails, phone numbers, long numbers, postal codes) and leaves the rest. Names it does not know stay in, so a person must approve it too.\n\n" +
-	"Categories: `PERSON ORG EMAIL PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE`.\n" +
+	"Categories: `PERSON ORG EMAIL PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE NAME`.\n" +
 	"A column the config does not name is tokenized as `VALUE`. A free-text column it does not name is dropped.\n" +
 	"Give each choice a short `reason`. Use the column names above (for a hidden header, use `[COLUMN_n]`; it can only be `tokenize` or `drop`).\n" +
 	"For JSON, nested names use dots (`address.city`) and lists use `[]` (`items[].name`).\n\n" +

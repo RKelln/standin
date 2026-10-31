@@ -47,6 +47,7 @@ type ctx struct {
 	warnings int
 	privDir  string
 	printed  bool // private path printed already
+	quiet    bool // drop warnings (a dry run inside approve or review)
 }
 
 // msg prints a line for the person (to stderr, so stdout stays clean).
@@ -56,6 +57,9 @@ func (c *ctx) msg(format string, args ...any) {
 
 // warn prints a warning and makes the exit code 1.
 func (c *ctx) warn(format string, args ...any) {
+	if c.quiet {
+		return
+	}
 	c.warnings++
 	fmt.Fprintf(c.env.Stderr, "Warning: "+format+"\n", args...)
 }
@@ -82,6 +86,7 @@ func init() {
 		{"check", "standin check [--project DIR] FILE... | -", "Look for real values and private patterns. Never prints them.", runCheck, nil},
 		{"report", "standin report [--project DIR]", "Print an issue report with no data from your files.", runReport, nil},
 		{"version", "standin version", "Print the version.", runVersion, nil},
+		{"licences", "standin licences", "Print the licences of the word lists built into standin.", runLicences, nil},
 		{"init", "standin init [--shared] [--no-prompt-guard] [--harness claude,codex,opencode]", "Make the folders and set up your AI tool's guard rules. Hooks go in .claude/settings.local.json unless --shared.", nil, initcmd.Run},
 		{"hook", "standin hook claude EVENT", "Called by your AI tool, not by you. Blocks reads of private files.", nil, hook.Run},
 	}

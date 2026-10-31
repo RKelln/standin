@@ -418,7 +418,122 @@ def build() -> dict[str, bytes]:
         "# Tests log whether these leak; they do not fail on them.\n"
         + "".join(v + "\n" for v in gaps)
     ).encode("utf-8")
+    files.update(build_text())
     return files
+
+
+# ---- free text (.md, .txt) ---------------------------------------------------
+# Invented people for the free-text fixtures. None of them is in CUSTOMERS, so the
+# word check (not the known-values pass) must find them. Surnames are made-up words.
+TEXT_FIRST = ["Oksana", "Kofi", "Tavish", "Ines", "Yaretzi", "Bolat", "Farida", "Thiago", "Nkemdi", "Saoirse"]
+TEXT_LAST = ["Drozdenko", "Mensavi", "Okorafor", "Quellbrook", "Vantwerp", "Zarnowski", "Ellingworth", "Brannagh"]
+# First names that are also English words. They are caught only in a name spot
+# (after Hi or Thanks, in a sign-off) or on a field line, so the fixtures put them there.
+TEXT_WORDNAMES = ["Grace", "Hope", "Rose"]
+TEXT_BRANDS = ["Shimano", "Brompton", "Quillfeather"]  # words a person would keep
+TEXT_PLACES = ["Dundas", "Roncesvalles"]
+TEXT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+TEXT_MONTHS = ["March", "April", "June", "July", "August", "September"]
+TEXT_JOBS = ["tune-up", "flat repair", "brake pads", "wheel true", "chain replacement"]
+
+
+def build_text() -> dict[str, bytes]:
+    rng = random.Random(SEED + 1)
+    out: dict[str, bytes] = {}
+    names: set[str] = set()
+    # inbox.md: emails with From/Date/Subject fields, greetings, sign-offs.
+    lines = ["# Shared inbox (invented)", "", "Everything here is made up.", ""]
+    for i in range(1, 31):
+        first = rng.choice(TEXT_FIRST)
+        last = rng.choice(TEXT_LAST)
+        other = rng.choice([n for n in TEXT_FIRST if n != first])
+        word = rng.choice(TEXT_WORDNAMES)
+        names.update([first, last, other, word])
+        local = f"{first}.{last}".lower()
+        lines += [
+            f"## E{i:02d}",
+            f"From: {first} {last} <{local}@example.com>",
+            f"Date: {rng.choice(TEXT_DAYS)[:3]}, {rng.choice(TEXT_MONTHS)[:3]} {rng.randint(1, 28)}, 2026",
+            f"Subject: {rng.choice(TEXT_JOBS)} {rng.choice(['question', 'booking', 'quote'])}",
+            "",
+            rng.choice(["Hi Sam,", "Hello,", f"Hi Sam and {word},"]),
+            rng.choice([
+                f"Can I book a {rng.choice(TEXT_JOBS)} for {rng.choice(TEXT_DAYS)}? My {rng.choice(TEXT_BRANDS)} is making a noise.",
+                f"My partner {other} will pick up the bike on {rng.choice(TEXT_DAYS)} after work.",
+                f"Do you have {rng.choice(TEXT_BRANDS)} pads in stock? I live near {rng.choice(TEXT_PLACES)}.",
+                f"Can you text {other} when the bike is done? The number is 416-555-01{rng.randint(10, 99)}.",
+                f"Thanks again for the {rng.choice(TEXT_JOBS)} last {rng.choice(TEXT_MONTHS)}. Say hi to {other}.",
+            ]),
+            "",
+            rng.choice(["Thanks,", "Cheers,", "Regards,"]),
+            rng.choice([first, word]),
+            "",
+        ]
+    names.add("Sam")
+    out["inbox.md"] = "\n".join(lines).encode("utf-8")
+
+    # notes.md: meeting notes with field lines, a list, and a Markdown table.
+    a, b, c = rng.sample(TEXT_FIRST, 3)
+    la, lb = rng.sample(TEXT_LAST, 2)
+    names.update([a, b, c, la, lb, "Grace"])
+    notes = [
+        "# Team meeting, 2026-03-04",
+        "",
+        f"Attendees: {a} {la}, {b} {lb}, Grace",
+        f"Regrets: {c}",
+        "",
+        "## Actions",
+        f"- {a} to call the supplier about {TEXT_BRANDS[0]} pads.",
+        f"- Ask {b} about the {TEXT_PLACES[0]} lease. Grace has the keys.",
+        "- Order new tubes before the spring rush.",
+        "",
+        "## Prices",
+        "",
+        "| Service | Price |",
+        "|---|---:|",
+        "| Tune-up | $89 |",
+        "| Flat repair | $25 |",
+        "| Wheel true | $35 |",
+        "",
+        "Next meeting: Tuesday, April 7.",
+        "",
+    ]
+    out["notes.md"] = "\n".join(notes).encode("utf-8")
+
+    # receipt.txt: a typed receipt; header words are a supplier name.
+    out["receipt.txt"] = "\n".join([
+        f"{TEXT_BRANDS[2].upper()} BIKE PARTS",
+        "Receipt R-77",
+        "Date: 2026-07-09",
+        "--------------------------------",
+        "Brake pads x24              168.00",
+        "Tubes 700c x40              216.00",
+        "--------------------------------",
+        "TOTAL                       384.00",
+        "",
+        "Paid: debit",
+        f"Served by {rng.choice(TEXT_FIRST)} {rng.choice(TEXT_LAST)}",
+        "",
+    ]).encode("utf-8")
+    for w in out["receipt.txt"].decode().split("\n")[-2].split()[2:]:
+        names.add(w)
+
+    # table.txt: a .txt that is really a table; refused (rename it to .csv).
+    out["table.txt"] = b"Date,Item,Amount\n2026-01-02,Tubes,12.00\n2026-01-03,Pads,28.00\n2026-01-04,Chain,38.00\n"
+    # uncased.md: mostly a script with no capital letters (random CJK letters, no meaning).
+    han = "".join(chr(rng.randint(0x4E00, 0x9FA5)) for _ in range(120))
+    out["uncased.md"] = f"# Notes\n\n{han[:60]}\n{han[60:]}\n".encode("utf-8")
+
+    out["text-names.txt"] = (
+        "# Every invented person-name word in inbox.md, notes.md and receipt.txt.\n"
+        "# The word check must swap each one where it appears capitalised.\n"
+        + "".join(n + "\n" for n in sorted(names))
+    ).encode("utf-8")
+    out["text-keep.txt"] = (
+        "# Brand and place words in the text fixtures, which a person would keep.\n"
+        + "".join(n + "\n" for n in TEXT_BRANDS + TEXT_PLACES)
+    ).encode("utf-8")
+    return out
 
 
 def main() -> int:

@@ -16,18 +16,66 @@ const MinKnownLen = 3
 
 // Known finds values from the mapping in text: case-insensitive, whole
 // words, longest first.
+//
+// Values are indexed by their first three letters (case-folded, spaces as
+// one space), so each spot in the text tries only the few values that can
+// start there. (One regexp with every value joined by | was slow with a
+// thousand values.)
 type Known struct {
 	entries []mapping.Entry // sorted longest key first
-	all     *regexp.Regexp
+	byStart map[[3]rune][]int
 	one     []*regexp.Regexp // lazily built, one per entry
 }
 
+func isSpaceLike(r rune) bool { return unicode.IsSpace(r) || unicode.Is(unicode.Z, r) }
+
+// fold gives one form for every case form of r, as (?i) matches them.
+func fold(r rune) rune {
+	min := r
+	for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+		if f < min {
+			min = f
+		}
+	}
+	return min
+}
+
+// start3 reads the first three letters of s from i, folded, with a run of
+// spaces read as one space. ok is false if s has fewer.
+func start3(s string, i int) (k [3]rune, ok bool) {
+	n := 0
+	space := false
+	for i < len(s) && n < 3 {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+		if isSpaceLike(r) {
+			if space {
+				continue
+			}
+			space = true
+			r = ' '
+		} else {
+			space = false
+		}
+		k[n] = fold(r)
+		n++
+	}
+	return k, n == 3
+}
+
+// SkipKnown, when set, leaves a mapping row out of the known list. The words
+// package sets it: a one-word NAME that is also an English word ("may",
+// "supply", "rose") is found by the word check only, so a scan column,
+// check, or a hook does not fire on the everyday word.
+var SkipKnown func(e mapping.Entry) bool
+
 // NewKnown builds a finder from the mapping. It returns nil if there is nothing to find.
+// Words the person chose to keep (Entry.Kept) are left out.
 func NewKnown(m *mapping.Mapping) *Known {
 	seen := map[string]bool{}
 	var es []mapping.Entry
 	for _, e := range m.Entries {
-		if utf8.RuneCountInString(e.Key) < MinKnownLen || seen[e.Key] {
+		if e.Kept || utf8.RuneCountInString(e.Key) < MinKnownLen || seen[e.Key] || (SkipKnown != nil && SkipKnown(e)) {
 			continue
 		}
 		seen[e.Key] = true
@@ -37,15 +85,13 @@ func NewKnown(m *mapping.Mapping) *Known {
 		return nil
 	}
 	sort.SliceStable(es, func(i, j int) bool { return len(es[i].Key) > len(es[j].Key) })
-	parts := make([]string, len(es))
+	k := &Known{entries: es, byStart: map[[3]rune][]int{}, one: make([]*regexp.Regexp, len(es))}
 	for i, e := range es {
-		parts[i] = phrase(e.Key)
+		if st, ok := start3(e.Key, 0); ok {
+			k.byStart[st] = append(k.byStart[st], i)
+		}
 	}
-	return &Known{
-		entries: es,
-		all:     regexp.MustCompile(`(?i)(?:` + strings.Join(parts, "|") + `)`),
-		one:     make([]*regexp.Regexp, len(es)),
-	}
+	return k
 }
 
 // phrase turns a normalised value into a pattern that allows any run of spaces between words.
@@ -76,35 +122,37 @@ func boundaryOK(s string, a, b int) bool {
 	return true
 }
 
-// Find returns the known values in s.
+// Find returns the known values in s: at each spot, left to right, the
+// longest value that matches there as whole words.
 func (k *Known) Find(s string) []Hit {
 	if k == nil {
 		return nil
 	}
 	var hits []Hit
-	pos := 0
-	for pos < len(s) {
-		loc := k.all.FindStringIndex(s[pos:])
-		if loc == nil {
-			break
+	for pos := 0; pos < len(s); {
+		_, size := utf8.DecodeRuneInString(s[pos:])
+		if st, ok := start3(s, pos); ok {
+			if h, ok := k.tryAt(s, pos, k.byStart[st]); ok {
+				hits = append(hits, h)
+				pos = h.End
+				continue
+			}
 		}
-		a, b := loc[0]+pos, loc[1]+pos
-		if boundaryOK(s, a, b) {
-			e := k.which(s[a:b])
-			hits = append(hits, Hit{Start: a, End: b, Kind: "known value", Category: e.Category, Standin: e.Standin})
-			pos = b
-			continue
-		}
-		// The longest choice broke the whole-word rule; try each value at this spot.
-		if h, ok := k.tryAt(s, a); ok {
-			hits = append(hits, h)
-			pos = h.End
-			continue
-		}
-		_, size := utf8.DecodeRuneInString(s[a:])
-		pos = a + size
+		pos += size
 	}
 	return hits
+}
+
+// withTail takes in the trailing . , ; or : that the key leaves out, when the
+// text has the same ones as the first spelling ("Harbourline Courier Co."),
+// so restore does not write the dot twice.
+func withTail(s string, b int, e mapping.Entry) int {
+	v := strings.TrimSpace(e.Value())
+	tail := v[len(strings.TrimRight(v, ".,;:")):]
+	if tail != "" && strings.HasPrefix(s[b:], tail) {
+		return b + len(tail)
+	}
+	return b
 }
 
 func (k *Known) re(i int) *regexp.Regexp {
@@ -114,25 +162,16 @@ func (k *Known) re(i int) *regexp.Regexp {
 	return k.one[i]
 }
 
-// which finds the entry whose value matched text.
-func (k *Known) which(text string) mapping.Entry {
-	for i := range k.entries {
-		if loc := k.re(i).FindStringIndex(text); loc != nil && loc[1] == len(text) {
-			return k.entries[i]
-		}
-	}
-	return k.entries[0] // not reached: text came from the joined pattern
-}
-
-func (k *Known) tryAt(s string, a int) (Hit, bool) {
-	for i, e := range k.entries {
+func (k *Known) tryAt(s string, a int, idx []int) (Hit, bool) {
+	for _, i := range idx {
+		e := k.entries[i]
 		loc := k.re(i).FindStringIndex(s[a:])
 		if loc == nil {
 			continue
 		}
 		b := a + loc[1]
 		if boundaryOK(s, a, b) {
-			return Hit{Start: a, End: b, Kind: "known value", Category: e.Category, Standin: e.Standin}, true
+			return Hit{Start: a, End: withTail(s, b, e), Kind: "known value", Category: e.Category, Standin: e.Standin}, true
 		}
 	}
 	return Hit{}, false

@@ -20,6 +20,7 @@ import (
 const (
 	MappingFile  = "mapping.json"
 	ApprovalFile = "approval.json"
+	WordsFile    = "words.json" // word choices for free text; as secret as the mapping
 	ErrorsFile   = "errors.json"
 )
 
@@ -229,6 +230,11 @@ type Approval struct {
 	ApprovedAt   string   `json:"approved_at"`
 	Keeps        []string `json:"keeps"`
 	Scans        []string `json:"scans,omitempty"`
+	// Texts lists "<match>:text" for each approved word check on free text.
+	Texts []string `json:"texts,omitempty"`
+	// WordsSHA256 is the sha256 of words.json as approve wrote it. A changed
+	// words.json voids the approval.
+	WordsSHA256 string `json:"words_sha256,omitempty"`
 }
 
 // LoadApproval reads approval.json. A missing file gives nil, nil.

@@ -146,3 +146,35 @@ func TestKnownNoBreakSpace(t *testing.T) {
 		t.Fatalf("got %q", out)
 	}
 }
+
+// A NAME word the person chose to keep is no longer looked for, but its
+// stand-in still restores (the row stays in the mapping).
+func TestKeptWordsAreNotKnown(t *testing.T) {
+	m := mapping.New()
+	m.Get("NAME", "Shimano")
+	m.Get("NAME", "Oksana")
+	m.SetKept(func(k string) bool { return k == "shimano" })
+	k := NewKnown(m)
+	if got, _ := Replace("Shimano pads for Oksana", k, m); got != "Shimano pads for [NAME_2]" {
+		t.Errorf("got %q", got)
+	}
+	if _, ok := m.Lookup("[NAME_1]"); !ok {
+		t.Error("the kept word's stand-in must stay in the mapping")
+	}
+	b := m.Marshal()
+	m2, err := mapping.Parse(b)
+	if err != nil || !m2.Entries[0].Kept || m2.Entries[1].Kept {
+		t.Errorf("kept flag lost: %v %+v", err, m2)
+	}
+}
+
+// A known value whose first spelling ends in a dot keeps the dot inside the
+// hit, so restore does not write it twice.
+func TestKnownValueTakesItsDot(t *testing.T) {
+	m := mapping.New()
+	m.Get("ORG", "Quillfeather Courier Co.")
+	got, _ := Replace("One courier, Quillfeather Courier Co., pays late.", NewKnown(m), m)
+	if got != "One courier, [ORG_1], pays late." {
+		t.Errorf("got %q", got)
+	}
+}

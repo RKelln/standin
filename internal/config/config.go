@@ -31,7 +31,12 @@ const (
 	Keep     = "keep"
 	Drop     = "drop"
 	Scan     = "scan"
+	Words    = "words" // text: the word check (a kind of scan; needs approval)
 )
+
+// Groups of words the config may keep in free text. Only built-in groups:
+// the config never names a word, since the AI never sees one.
+var KeepGroups = []string{"calendar"}
 
 // Column is the rule for one column.
 type Column struct {
@@ -40,12 +45,42 @@ type Column struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
+// Text is the rule for the free text in a .md or .txt file.
+type Text struct {
+	Action     string   `json:"action"` // words or drop
+	KeepGroups []string `json:"keep_groups,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
+}
+
 // File is the rule set for files that match a glob.
 type File struct {
 	Match   string            `json:"match"`
-	Columns map[string]Column `json:"columns"`
-	order   []string          // column names in the order written
+	Columns map[string]Column `json:"columns,omitempty"`
+	// For .md and .txt files: "Label: value" lines, Markdown table columns
+	// (by header, in every table), and the rest of the text.
+	Fields      map[string]Column `json:"fields,omitempty"`
+	Tables      map[string]Column `json:"tables,omitempty"`
+	Text        *Text             `json:"text,omitempty"`
+	order       []string          // column names in the order written
+	fieldOrder  []string
+	tablesOrder []string
 }
+
+// KeepsGroup reports whether the text rule keeps a built-in word group.
+func (f *File) KeepsGroup(g string) bool {
+	if f == nil || f.Text == nil || f.Text.Action != Words {
+		return false
+	}
+	for _, k := range f.Text.KeepGroups {
+		if k == g {
+			return true
+		}
+	}
+	return false
+}
+
+// UsesWords reports whether the rule asks for the word check on its text.
+func (f *File) UsesWords() bool { return f != nil && f.Text != nil && f.Text.Action == Words }
 
 // Config is the whole file.
 type Config struct {
@@ -110,11 +145,36 @@ func Parse(b []byte) (*Config, error) {
 			return nil, bad(`file rule %d has a "match" pattern I cannot read.`, i+1)
 		}
 		if i < len(orders) {
-			f.order = orders[i]
+			f.order, f.fieldOrder, f.tablesOrder = orders[i][0], orders[i][1], orders[i][2]
 		}
 		for name, col := range f.Columns {
 			if err := checkColumn(name, col); err != nil {
 				return nil, bad("in %q, column %q: %s", f.Match, name, err.Error())
+			}
+		}
+		for what, cols := range map[string]map[string]Column{"field": f.Fields, "table column": f.Tables} {
+			for name, col := range cols {
+				if err := checkTextColumn(name, col); err != nil {
+					return nil, bad("in %q, %s %q: %s", f.Match, what, name, err.Error())
+				}
+			}
+		}
+		if t := f.Text; t != nil {
+			switch t.Action {
+			case Words:
+				for _, g := range t.KeepGroups {
+					if !validGroup(g) {
+						return nil, bad(`in %q, "keep_groups" can only hold %s. It cannot name words: the person chooses words in standin approve.`, f.Match, strings.Join(KeepGroups, ", "))
+					}
+				}
+			case Drop:
+				if len(t.KeepGroups) > 0 {
+					return nil, bad(`in %q, "keep_groups" only goes with "text": {"action": "words"}.`, f.Match)
+				}
+			case "":
+				return nil, bad(`in %q, "text" has no "action" (words or drop).`, f.Match)
+			default:
+				return nil, bad(`in %q, the "text" action must be words or drop.`, f.Match)
 			}
 		}
 	}
@@ -159,22 +219,57 @@ func checkColumn(name string, col Column) error {
 	return nil
 }
 
-// columnOrder gets the column names of each file rule in the order written,
-// so review prints them in the same order as the file.
-func columnOrder(b []byte) ([][]string, error) {
+func validGroup(g string) bool {
+	for _, k := range KeepGroups {
+		if g == k {
+			return true
+		}
+	}
+	return false
+}
+
+// checkTextColumn checks a field or table column rule. The same actions as
+// a column, but no [COLUMN_n] and no (key).
+func checkTextColumn(name string, col Column) error {
+	if _, ok := ColumnRef(name); ok || name == "(key)" {
+		return errors.New(`use the name shown in the shape file.`)
+	}
+	return checkColumn(name, col)
+}
+
+// columnOrder gets the column, field and table names of each file rule in
+// the order written, so review prints them in the same order as the file.
+func columnOrder(b []byte) ([][3][]string, error) {
 	var raw struct {
 		Files []struct {
 			Columns json.RawMessage `json:"columns"`
+			Fields  json.RawMessage `json:"fields"`
+			Tables  json.RawMessage `json:"tables"`
 		} `json:"files"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, bad("it is not valid JSON.")
 	}
-	var out [][]string
+	var out [][3][]string
 	for _, f := range raw.Files {
+		var o [3][]string
+		for i, part := range []json.RawMessage{f.Columns, f.Fields, f.Tables} {
+			names, err := keyOrder(part)
+			if err != nil {
+				return nil, err
+			}
+			o[i] = names
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
+func keyOrder(part json.RawMessage) ([]string, error) {
+	{
 		var names []string
-		if len(f.Columns) > 0 && string(f.Columns) != "null" {
-			dec := json.NewDecoder(bytes.NewReader(f.Columns))
+		if len(part) > 0 && string(part) != "null" {
+			dec := json.NewDecoder(bytes.NewReader(part))
 			if _, err := dec.Token(); err != nil {
 				return nil, bad("it is not valid JSON.")
 			}
@@ -186,7 +281,7 @@ func columnOrder(b []byte) ([][]string, error) {
 				}
 				k, _ := t.(string)
 				if seen[k] {
-					return nil, bad("column %q is listed twice in one file rule.", k)
+					return nil, bad("%q is listed twice in one file rule.", k)
 				}
 				seen[k] = true
 				names = append(names, k)
@@ -196,13 +291,18 @@ func columnOrder(b []byte) ([][]string, error) {
 				}
 			}
 		}
-		out = append(out, names)
+		return names, nil
 	}
-	return out, nil
 }
 
 // ColumnNames returns the rule's column names in the order written.
 func (f *File) ColumnNames() []string { return f.order }
+
+// FieldNames returns the rule's field names in the order written.
+func (f *File) FieldNames() []string { return f.fieldOrder }
+
+// TableNames returns the rule's table column names in the order written.
+func (f *File) TableNames() []string { return f.tablesOrder }
 
 func checkGlob(p string) error {
 	for _, seg := range strings.Split(p, "/") {

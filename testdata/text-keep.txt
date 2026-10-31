@@ -1,0 +1,6 @@
+# Brand and place words in the text fixtures, which a person would keep.
+Shimano
+Brompton
+Quillfeather
+Dundas
+Roncesvalles

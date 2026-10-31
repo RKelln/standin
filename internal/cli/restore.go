@@ -14,6 +14,7 @@ import (
 	"github.com/RKelln/standin/internal/scan"
 	"github.com/RKelln/standin/internal/store"
 	"github.com/RKelln/standin/internal/textenc"
+	"github.com/RKelln/standin/internal/words"
 )
 
 // loadMapping reads the mapping. need=true refuses if there is none.
@@ -242,5 +243,17 @@ func runVersion(c *ctx) error {
 		commit = "unknown"
 	}
 	fmt.Fprintf(c.env.Stdout, "standin %s (commit %s)\n", c.version(), commit)
+	return nil
+}
+
+func runLicences(c *ctx) error {
+	n, err := words.Notices()
+	if err != nil {
+		return fail.New("word-lists", "My built-in word lists are damaged. Get a fresh copy of standin.")
+	}
+	fmt.Fprintln(c.env.Stdout, "Standin is MIT licensed (see LICENSE). It has two word lists built in, for the word check on free text:")
+	fmt.Fprintln(c.env.Stdout)
+	fmt.Fprint(c.env.Stdout, n)
+	fmt.Fprintln(c.env.Stdout, "The same notes are in THIRD_PARTY.md, next to the program in each download.")
 	return nil
 }

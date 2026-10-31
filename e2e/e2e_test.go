@@ -421,8 +421,8 @@ func TestRefusesUnsupportedAndBroken(t *testing.T) {
 		{"ledger.xlsx", "ledger.xlsx", regexp.MustCompile(`(?i)csv`)},
 		{"ledger.xlsx", "ledger.csv", nil}, // a zip renamed .csv
 		{"empty.csv", "empty.csv", nil},
-		{"ragged.csv", "ragged.csv", regexp.MustCompile(`\b4\b`)}, // the line number
-		{"invoices.csv", "invoices.txt", nil},                     // .txt is refused by extension
+		{"ragged.csv", "ragged.csv", regexp.MustCompile(`\b4\b`)},     // the line number
+		{"invoices.csv", "invoices.txt", regexp.MustCompile(`\.csv`)}, // a .txt that is a table: rename it
 	}
 	for _, c := range cases {
 		t.Run(c.as, func(t *testing.T) {
@@ -558,7 +558,7 @@ func TestUnmentionedFreeTextDropped(t *testing.T) {
 func TestBadConfigRefused(t *testing.T) {
 	cases := map[string]string{
 		"unknown action":   `{"version":1,"files":[{"match":"raw/*.csv","columns":{"Customer":{"action":"hide"}}}]}`,
-		"unknown category": `{"version":1,"files":[{"match":"raw/*.csv","columns":{"Customer":{"action":"tokenize","category":"NAME"}}}]}`,
+		"unknown category": `{"version":1,"files":[{"match":"raw/*.csv","columns":{"Customer":{"action":"tokenize","category":"NICKNAME"}}}]}`,
 		"no category":      `{"version":1,"files":[{"match":"raw/*.csv","columns":{"Customer":{"action":"tokenize"}}}]}`,
 		"unknown key":      `{"version":1,"files":[{"match":"raw/*.csv","colums":{}}]}`,
 		"not json":         `{"version":1,"files":[`,

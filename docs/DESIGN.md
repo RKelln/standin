@@ -327,3 +327,61 @@ is in `docs/PLAN.md`; where this file and PLAN differ, PLAN wins.)
     names, gzipped with `go:embed`, notices in `THIRD_PARTY.md`. `.eml`/`.mbox` later, hand-parsed
     (`net/mail` links `net`). First numbers: 22-27 review words on a small shop folder; about 150 on an
     invented 200-email inbox, of which about 30 are words a person keeps.
+    Built 2026-10-30; details and measured numbers in decisions 39-45 below.
+
+### Free text, as built (track F, 2026-10-30; contract: `docs/PLAN.md` "Free text")
+
+Decision 38 is built as the research's "smallest useful slice". Details decided while building:
+
+39. **A `.txt` is free text unless it parses as a table** (CSV or TSV, 3 or more rows, 2 or more
+    columns, every row the same width): then it is refused, "rename it to .csv or .tsv", as the research
+    advised. A real CSV parse, so quoted commas do not hide a table. Known: three short lines with one
+    comma each also read as a table, so such a note is refused (the safe side; a test records it).
+40. **Fields and tables.** A `Label: value` line is a field only when every label word is a common
+    header word or an English word that is not also a first name. So a chat line ("Leila: see you
+    then", "Mark: ok") stays text and gets the word check, instead of hiding the name as a label.
+    A table header that looks like data is tokenized and cannot be named in the config (no
+    `[COLUMN_n]` for tables: with several tables, n would be unclear). A field `scan` gets the word
+    check; a table `scan` is the CSV scan (known values and patterns), as the research said. Field
+    parts (decision 38) come only from field values that do not read like free text: a dropped prose
+    field made "Is", "What" and "How" candidates on the trial folder.
+41. **One home for each choice.** Day and month names are kept by the config (`keep_groups`), which the
+    config hash already covers; `words.json` holds only `keep` and `swap` (the research sketch also had
+    `groups` there). `words_sha256` is the hash of the whole `words.json` as approve wrote it, so any
+    edit voids the approval, as the brief asked. Scrub never writes `words.json`: a new word stays
+    "new" (swapped, exit 1) until the person runs approve, which asks only about new words.
+42. **A word kept after it was swapped** keeps its mapping row, marked `"kept": true`, so old stand-ins
+    still restore, while the known-values pass, `check` and the hooks stop looking for it. A one-word
+    `NAME` value is not a known-value hit inside the word check: it goes through the word rules again,
+    so a kept word, or a day name the config keeps, is not swapped just because it was swapped
+    elsewhere. A v0.1 binary refuses a mapping with `kept` in it (unknown field; fail closed).
+    A one-word `NAME` that is also an English word ("May", "Supply", "Rose") is not a known value at
+    all: known values match in any case, so a CSV scan, `check`, the PostToolUse warning and the prompt
+    guard would fire on everyday words. The word check alone swaps it (in `.md`/`.txt`). Cost: such a
+    name in a CSV scan column is not swapped by being known. Other swapped names ("Sam", "Oksana")
+    are known values, so the prompt guard now also stops them (decision 32's opt-out still applies).
+    The hooks load the word lists (about 15 ms) only when the mapping has `NAME` rows.
+43. **Finder rules beyond the prototype:** titles (Mr, Mrs, Ms, Mx, Dr, Mme, M., Prof) are name spots;
+    a word right after a caught name counts only with nothing but spaces between; a first name typed in
+    lower case is a candidate when it is 3 or more letters, not an English word, not a day name, and
+    not right after `. / @ _` ("thx kavya" yes, "price-sheet.md" no); a word in a script with no capitals
+    is a candidate (unusual group); a file with more than 20% of its letters (and at least 10) in such
+    a script is refused. With no `text` rule the text is dropped (default-deny), with a warning.
+44. **Approve shows words only on a screen.** With a word check, `approve` needs stdout to be a terminal
+    as well as stdin. Context lines mask other candidates, known values and patterns as `▒▒▒`. Enter
+    or `none` keeps nothing; three unreadable answers refuse. `review` (the agent may run it) shows
+    bands only, including "new since the last approve". `words.json` joined the hook's secret file
+    names. `standin licences` prints the list notices, since `install.sh` keeps only the binary.
+45. **Known values are found by a 3-letter index, not one joined regexp.** With about 1,500 values (a
+    1000-email inbox), the joined regexp took 7 s per scrub; the index takes 0.2 s, with the same output
+    on every sample. Also fixed: a known value whose first spelling ends in `.` ("Harbourline Courier
+    Co.") now takes that dot into the hit, so restore no longer writes "Co..".
+
+**Numbers from the build** (Go, same lists as the research; invented data only). Review words (new
+words a person is asked about, both groups) on copies of the trial's bike-shop folder: 19 (clean) and
+26 (messy), against the research's 22 and 27; none of the 5 people missed. Generated inbox (research
+generator, invented names), config `From` tokenize, `Date` keep, `Subject` scan, text words: 200 emails
+gave 82 review words (23 unusual, nearly all brands and places, and 59 name-like) and 16 day names;
+keeping all 23 unusual words, 98% of name words were swapped (left: a brand that is also a surname, a
+hyphenated name the run kept, and two names typed in lower case that are also words). 1000 emails: 87
+review words; one name word left ("faith", in lower case). Binary 3.43 MB to 3.92 MB (stripped).

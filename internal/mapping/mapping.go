@@ -22,7 +22,8 @@ import (
 )
 
 // Categories are the stand-in categories Standin knows.
-var Categories = []string{"PERSON", "ORG", "EMAIL", "PHONE", "ACCOUNT", "ID", "ADDRESS", "POSTAL", "KEY", "VALUE"}
+// NAME is a word from free text (a .md or .txt file) that the word check swapped.
+var Categories = []string{"PERSON", "ORG", "EMAIL", "PHONE", "ACCOUNT", "ID", "ADDRESS", "POSTAL", "KEY", "VALUE", "NAME"}
 
 // ValidCategory reports whether c is a known category.
 func ValidCategory(c string) bool {
@@ -43,6 +44,9 @@ type Entry struct {
 	Category  string   `json:"category"`
 	Key       string   `json:"key"`
 	Spellings []string `json:"spellings"`
+	// Kept is set on a NAME word the person later chose to keep. Its stand-in
+	// still restores, but scans no longer look for it.
+	Kept bool `json:"kept,omitempty"`
 }
 
 // Value is the spelling restore puts back: the first one seen.
@@ -209,13 +213,23 @@ func (m *Mapping) CountByCategory() []struct {
 	return out
 }
 
+// SetKept marks each NAME row whose word is kept (keep says yes), and
+// unmarks the others.
+func (m *Mapping) SetKept(keep func(key string) bool) {
+	for i := range m.Entries {
+		if m.Entries[i].Category == "NAME" {
+			m.Entries[i].Kept = keep(m.Entries[i].Key)
+		}
+	}
+}
+
 // FindValue finds a row whose normalised value equals value's, in any
-// category (the earliest row wins).
+// category (the earliest row wins). Kept words are not found.
 func (m *Mapping) FindValue(value string) (Entry, bool) {
 	key := Normalize(value)
 	best := -1
 	for _, c := range Categories {
-		if i, ok := m.byKey[c+"\x00"+key]; ok && (best < 0 || i < best) {
+		if i, ok := m.byKey[c+"\x00"+key]; ok && !m.Entries[i].Kept && (best < 0 || i < best) {
 			best = i
 		}
 	}

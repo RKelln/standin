@@ -1,0 +1,24 @@
+# Every invented person-name word in inbox.md, notes.md and receipt.txt.
+# The word check must swap each one where it appears capitalised.
+Bolat
+Brannagh
+Drozdenko
+Ellingworth
+Farida
+Grace
+Hope
+Ines
+Kofi
+Mensavi
+Nkemdi
+Okorafor
+Oksana
+Quellbrook
+Rose
+Sam
+Saoirse
+Tavish
+Thiago
+Vantwerp
+Yaretzi
+Zarnowski
