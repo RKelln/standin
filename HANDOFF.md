@@ -19,10 +19,8 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 
 ## Status (2026-10-30 night)
 
-- v0.1.0 is READY but NOT released: tagging and publishing need Ryan's go-ahead (blocked by a permission
-  check). To release: `git tag -a v0.1.0 -m v0.1.0 && git push origin v0.1.0 &&
-  GITHUB_TOKEN=$(gh auth token) goreleaser release --clean` (goreleaser v2.12.7 is in ~/go/bin;
-  `goreleaser release --snapshot --clean` already builds all 6 archives).
+- v0.1.0 released 2026-10-30: https://github.com/RKelln/standin/releases/tag/v0.1.0 (local goreleaser).
+  The curl install was tested on Linux against the live release.
 - All tracks landed. Fresh review: 16 findings, fixed per DESIGN 24-31; reviewer repros rerun clean
   (except `--private` by hand, which is allowed for the person; the hook blocks it for agents).
 - `go test ./...` green. `sh tools/claude_smoke.sh`: 4/4 on Claude Code 2.1.314 (Linux).
@@ -30,7 +28,6 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 
 ## For Ryan
 
-- Approve the v0.1.0 tag and release (above).
 - Then test the curl install on the Mac mini, and run `sh tools/claude_smoke.sh` there (needs go, claude).
 - Merge and push the local `ci-workflows` branch with a token that has `workflow` scope.
 - Windows: install.ps1 never run; Smart App Control and code signing are your call.
