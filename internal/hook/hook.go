@@ -24,7 +24,7 @@ const (
 const maxInput = 64 << 20 // 64 MiB of hook JSON is more than any real call
 
 // Run is the entry point for `standin hook ...`. args excludes "hook" itself:
-// for example ["claude", "PreToolUse", "--project", "/path"].
+// for example ["claude", "PreToolUse"]. An old --project flag is still read.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("standin hook", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -32,7 +32,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	private := fs.String("private", "", "private store folder")
 	pos, err := parseInterleaved(fs, args)
 	if err != nil {
-		return block(stderr, "standin hook: "+err.Error()+". Use: standin hook claude EVENT [--project DIR]")
+		return block(stderr, "standin hook: "+err.Error()+". Use: standin hook claude EVENT")
 	}
 	if len(pos) != 2 {
 		return block(stderr, "standin hook: say the harness and the event, like: standin hook claude PreToolUse")
@@ -66,7 +66,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	proj, err := FindProject(*project, in.Cwd)
 	if err != nil {
-		return block(stderr, "standin hook: "+err.Error()+". Run standin init in your project folder.")
+		return block(stderr, "standin hook: "+err.Error()+", so it blocks to be safe. If the folder was moved, run standin init again in this folder.")
 	}
 	store, err := Core.StoreDir(proj, *private)
 	if err != nil {

@@ -205,7 +205,7 @@ var (
 	segRe = regexp.MustCompile("(?i)(^|[\\s\"'=(/\\\\:;|&<>`])(raw|restored)($|[\\s\"'/\\\\*;|&<>)`])")
 	// standin named anywhere (bare, by path, or .exe), then a command only the person may run.
 	standinWordRe = regexp.MustCompile(`(?i)(^|[^a-z0-9_-])standin(\.exe)?($|[^a-z0-9_-])`)
-	personOnlyRe  = regexp.MustCompile("(?i)(^|[\\s;|&(`=])(approve|restore|init)($|[\\s;|&)`])")
+	personOnlyRe  = regexp.MustCompile("(?i)(^|[\\s;|&(`=])(approve|restore|init|show)($|[\\s;|&)`])")
 	// --private, -private, --project, -project, with or without =value.
 	placeFlagRe = regexp.MustCompile(`(?i)(^|[\s;|&(=])--?(private|project)($|[\s=])`)
 	// One plain standin command that never prints a real value, with no shell
@@ -228,7 +228,7 @@ var recTools = map[string]bool{
 	"chmod": true, "chown": true, "select-string": true, "copy-item": true, "dir": true,
 }
 
-const personOnlyMsg = "Only the person runs standin approve, restore and init, in their own terminal. The AI must never run them, not even through another program."
+const personOnlyMsg = "Only the person runs standin approve, restore, show and init, in their own terminal. The AI must never run them, not even through another program."
 
 // shellRisk returns why a shell command looks like it touches a protected place, or "".
 func (c *claude) shellRisk(cmd string) string {
@@ -462,8 +462,10 @@ func (c *claude) userPrompt() int {
 		return exitOK
 	}
 	return block(c.stderr, "[standin] Your message was not sent. It has "+describe(fs)+". "+
+		"This guard stops private values that standin knows from being typed or pasted into the chat. "+
 		"Use the stand-in (like [PERSON_1]) instead of the real value, or leave the detail out. "+
-		"A stand-in is a made-up label that takes the place of a real value.")
+		"A stand-in is a made-up label that takes the place of a real value. "+
+		"If you talk about your own records on purpose, you can turn this guard off: run standin init --no-prompt-guard in your own terminal.")
 }
 
 func (c *claude) postToolUse() int {

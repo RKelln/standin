@@ -44,6 +44,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	bin := fs.String("bin", "", "full path of the standin program for hooks to run (default: this program)")
 	private := fs.String("private", "", "private store folder, if not the default")
 	noVersion := fs.Bool("no-version-check", false, "set up Claude Code hooks even if its version cannot be checked (not safe)")
+	shared := fs.Bool("shared", false, "write the Claude Code hooks to .claude/settings.json (shared) instead of .claude/settings.local.json (this computer only)")
+	noPromptGuard := fs.Bool("no-prompt-guard", false, "leave out the hook that stops known real values being sent in your chat messages")
 	if err := fs.Parse(args); err != nil {
 		return exitBlock
 	}
@@ -116,7 +118,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		case !atLeast(v, MinClaude):
 			warnings = append(warnings, "Claude Code "+v+" is older than "+MinClaude+" (--no-version-check). A broken hook may let data through.")
 		}
-		c, err := planClaude(proj, exe, *private, store)
+		c, err := planClaude(proj, claudeOpts{exe: exe, private: *private, store: store, shared: *shared, promptGuard: !*noPromptGuard})
 		if err != nil {
 			return fail(err.Error())
 		}
@@ -184,10 +186,21 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fmt.Fprintln(stdout, "Next: put your real files in raw/, then run: standin shape raw/<file>")
 	if harnesses["claude"] {
 		fmt.Fprintln(stdout, "Claude Code: restart it in this folder so it loads the hooks.")
+		if *shared {
+			fmt.Fprintln(stdout, "The hooks are in .claude/settings.json. It holds this computer's path to standin, so it may not work for others who share it.")
+		} else {
+			fmt.Fprintln(stdout, "The hooks are in .claude/settings.local.json, for this computer only. If this folder is in git, add that file to .gitignore.")
+		}
+		if *noPromptGuard {
+			fmt.Fprintln(stdout, "The prompt guard is off (--no-prompt-guard): your own chat messages are not checked for real values.")
+		} else {
+			fmt.Fprintln(stdout, "The prompt guard is on: a chat message that holds a real value standin knows is not sent.")
+			fmt.Fprintln(stdout, "  If you talk about your own records on purpose, run: standin init --no-prompt-guard")
+		}
 		fmt.Fprintln(stdout, "Be aware: the shell check is only a guess from the command text. A script or a clever command")
 		fmt.Fprintln(stdout, "  can still read raw/. The hooks are a safety net, not a wall.")
 		fmt.Fprintln(stdout, "We recommend turning on Claude Code's sandbox, which blocks every program from raw/ and restored/:")
-		fmt.Fprintln(stdout, `  add "sandbox": {"enabled": true, "allowUnsandboxedCommands": false} to .claude/settings.json.`)
+		fmt.Fprintln(stdout, `  add "sandbox": {"enabled": true, "allowUnsandboxedCommands": false} to .claude/settings.local.json.`)
 		fmt.Fprintln(stdout, "  It works on macOS, Linux (needs bubblewrap and socat) and WSL2, not on plain Windows.")
 	}
 	if harnesses["codex"] || harnesses["opencode"] {

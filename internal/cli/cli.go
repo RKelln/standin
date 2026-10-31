@@ -78,10 +78,11 @@ func init() {
 		{"approve", "standin approve [--project DIR]", "Approve the config. You must type the answers yourself.", runApprove, nil},
 		{"scrub", "standin scrub [--project DIR] [FILE...]", "Make the scrubbed copy the AI reads, and update the mapping.", runScrub, nil},
 		{"restore", "standin restore [--project DIR] FILE... | -", "Put real values back in text the AI wrote.", runRestore, nil},
+		{"show", "standin show [--project DIR] STANDIN...", "Show the real value behind a stand-in, like PERSON_9. Screen only.", runShow, nil},
 		{"check", "standin check [--project DIR] FILE... | -", "Look for real values and private patterns. Never prints them.", runCheck, nil},
 		{"report", "standin report [--project DIR]", "Print an issue report with no data from your files.", runReport, nil},
 		{"version", "standin version", "Print the version.", runVersion, nil},
-		{"init", "standin init [--project DIR] [--harness claude,codex,opencode]", "Make the folders and set up your AI tool's guard rules.", nil, initcmd.Run},
+		{"init", "standin init [--shared] [--no-prompt-guard] [--harness claude,codex,opencode]", "Make the folders and set up your AI tool's guard rules. Hooks go in .claude/settings.local.json unless --shared.", nil, initcmd.Run},
 		{"hook", "standin hook claude EVENT", "Called by your AI tool, not by you. Blocks reads of private files.", nil, hook.Run},
 	}
 }
@@ -230,6 +231,9 @@ func (c *ctx) privateDir(create bool) (string, error) {
 			return "", err
 		}
 		c.privDir = d
+		if c.private == "" && !store.Exists(d) {
+			c.movedHint(d)
+		}
 	}
 	if create {
 		if err := store.Ensure(c.privDir); err != nil {
@@ -241,6 +245,23 @@ func (c *ctx) privateDir(create bool) (string, error) {
 		c.msg("Private folder (holds the mapping; keep it away from the AI): %s", c.privDir)
 	}
 	return c.privDir, nil
+}
+
+// movedHint says what to do when this project has no private folder yet but
+// a project folder with the same name has one: the folder was probably moved
+// (decision 34). Standin does not move it: the person decides.
+func (c *ctx) movedHint(dir string) {
+	others := store.SameNameDirs(c.project, dir, c.env.Getenv("STANDIN_HOME"))
+	if len(others) == 0 {
+		return
+	}
+	c.warn("This project folder has no private folder yet, but a folder with the same name had one.\n"+
+		"  If you moved this project folder, move that private folder to the new name, so your stand-ins stay the same\n"+
+		"  (if you copied the project, copy it instead):\n"+
+		"    from: %s\n"+
+		"    to:   %s\n"+
+		"  Do this yourself, while no standin command is running. If it is a different project, ignore this.",
+		strings.Join(others, "\n    or:   "), dir)
 }
 
 // resolve finds a file named on the command line: as given (from this
@@ -279,36 +300,69 @@ func (c *ctx) rel(abs string) (string, bool) {
 	return filepath.ToSlash(r), true
 }
 
-// dataLikeName reports whether any part of a path looks like private data.
-// Each folder and the full file name are checked, extension included (a
-// name can hide in it: "statement.Zelda Quorn"), with and without the
-// extension, and each dot-separated part.
+// dataLikeName reports whether any part of a project-relative path looks
+// like private data. Each folder and the file name are checked, with and
+// without the extension, and each dot-separated part. A common extension
+// (like .md) is not read as a word: "answer.md" would otherwise look like
+// two lower-case words (a name). An uncommon one is checked with the rest,
+// since a name can hide in it ("statement.Zelda Quorn").
 func dataLikeName(rel string) bool {
 	for _, p := range strings.Split(rel, "/") {
-		for _, s := range []string{p, strings.TrimSuffix(p, filepath.Ext(p))} {
-			if _, ok := scan.LooksLikeDataName(s); ok {
-				return true
-			}
+		if dataLikePart(p) {
+			return true
 		}
 	}
 	return false
 }
 
-const hiddenName = "a file whose name looks like private data (rename it to something plain, like invoices.csv)"
-
-// show gives a project-relative path for messages, or a note if the name looks like data.
-func show(rel string) string {
-	if dataLikeName(rel) {
-		return hiddenName
+func dataLikePart(p string) bool {
+	ext := filepath.Ext(p)
+	stem := strings.TrimSuffix(p, ext)
+	checks := []string{stem}
+	if !plainExt[strings.ToLower(ext)] {
+		checks = append(checks, p)
 	}
-	return rel
+	for _, s := range checks {
+		if _, ok := scan.LooksLikeDataName(s); ok {
+			return true
+		}
+	}
+	return false
 }
 
-func (c *ctx) showArg(arg string) string {
-	if dataLikeName(filepath.ToSlash(arg)) {
-		return hiddenName
+// hiddenPart stands in for a folder or file name that looks like private data.
+const hiddenPart = "(name hidden)"
+
+// show gives a project-relative path for messages, with any folder or file
+// name that looks like data swapped for "(name hidden)":
+// restored/(name hidden). Give it only the project-relative part, so a long
+// home or scratch folder above the project cannot trip the check (decision 37).
+func show(rel string) string {
+	parts := strings.Split(rel, "/")
+	for i, p := range parts {
+		if dataLikePart(p) {
+			parts[i] = hiddenPart
+		}
 	}
-	return arg
+	return strings.Join(parts, "/")
+}
+
+// showArg shows a file named on the command line: project-relative if it is
+// inside the project, else by its own name only.
+func (c *ctx) showArg(arg string) string {
+	if arg == "-" {
+		return "typed text"
+	}
+	abs, err := filepath.Abs(arg)
+	if err == nil {
+		if _, serr := os.Stat(abs); serr != nil && !filepath.IsAbs(arg) && c.project != "" {
+			abs = filepath.Join(c.project, arg) // resolve also looks here
+		}
+		if r, ok := c.rel(clean(abs)); ok {
+			return show(r)
+		}
+	}
+	return show(filepath.Base(filepath.ToSlash(arg)))
 }
 
 // rawFile is a file inside raw/.

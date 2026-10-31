@@ -273,3 +273,57 @@ is in `docs/PLAN.md`; where this file and PLAN differ, PLAN wins.)
     shape and scrub; headers equal to a known value are swapped; all-caps names, `O'`/`Mc` names and
     no-break spaces are caught. Known misses kept: Unicode normal forms (no NFC in the standard library)
     and Turkish dotted I.
+
+### From the Get2Know trial (2026-10-30, `docs/get2know-needs.md`)
+
+32. **The prompt hook stays on, with an opt-out.** In general use it stops a pasted customer list or a
+    known value typed into the chat. Where a person talks about their own records on purpose (an
+    interview), it gets in the way and catches only full known values, so `init --no-prompt-guard` leaves
+    it out. Its block message names that flag.
+33. **`scrub` refuses until the config is approved** (exit 2, "run standin approve"), when the config has
+    any `keep` or `scan`. Replaces the "tokenize as `VALUE` and warn" fallback: those whole-cell stand-ins
+    joined the known list, and a later approved scrub swapped whole descriptions in scan columns.
+34. **Hooks find the project themselves.** `init` writes no `--project`; the hook uses
+    `CLAUDE_PROJECT_DIR`, then the hook input's `cwd`, walking up to the project, and still fails closed
+    if none is found, naming the fix. A moved folder keeps working. The private folder is still keyed by
+    path; when it is missing and one for a same-named project exists, commands say how to move it.
+    Built order: `CLAUDE_PROJECT_DIR`, then an old `--project` (from 0.1.0 settings) if that folder still
+    exists, then `cwd` walking up. A gone `--project` is skipped, not a block. `CLAUDE_PROJECT_DIR` comes
+    first because Claude Code sets it to the folder whose settings it loaded (hooks docs), which also
+    covers a copied folder whose old `--project` still exists. The move hint is a warning (exit 1), so two
+    real projects that share a folder name see it only until the second one has its own private folder.
+35. **`standin show STANDIN...`** prints real values for the person, on a terminal only (like `restore -`).
+    The Bash guard blocks it for agents.
+36. **Hooks and deny rules go in `.claude/settings.local.json` by default.** They hold this machine's
+    absolute binary path, and a shared `settings.json` may be shipped and updated by someone else.
+    `init --shared` writes `settings.json` instead.
+    Checked 2026-10-30 at https://code.claude.com/docs/en/settings and /hooks: `settings.local.json` is the
+    "project local" scope, above `settings.json`; list settings such as `permissions.deny` merge across
+    files; deny rules apply without the trust step; hooks are read from it ("Hook locations" table) and
+    merge across files, and a handler defined in two files runs once. Tested: `tools/claude_smoke.sh`
+    passes with the hooks and deny rules only in the local file (Claude Code 2.1.314). When `init` writes
+    one file it takes standin's own hooks (any event, any binary path) out of the other and leaves
+    everything else; the file is re-encoded, so key order and spacing may change but the JSON means the
+    same, and an untouched file is not rewritten. It leaves standin's old deny rules in `settings.json`:
+    they only add protection. Claude Code does not git-ignore a local file it did not create, so `init`
+    says to add it to `.gitignore`. Docs note: in a git repository Claude Code also reads the local file
+    at the repository root; it still reads one in the starting folder, which is where `init` writes it.
+37. **Messages name project-relative paths only**, so a long scratch or home path cannot trip the
+    data-like-name check. A hidden name reads "restored/(name hidden)".
+    The trial's message had another cause: the file-name check read `answer.md` as two lower-case words
+    (`answer`, `md`), which looks like a name. A common extension (the report's list) is no longer read
+    as a word; an uncommon one is still checked ("statement.Zelda Quorn"). Only the folder or file name
+    that looks like data is hidden, so the rest of the path still shows. A file outside the project is
+    named by its own name only. Still absolute in messages, on purpose: the project and private folder
+    lines (`init`, the "Private folder" line, the move hint).
+38. **Free text (`.md`, `.txt`): approve words, not columns** (research and numbers:
+    `docs/research/free-text.md`). Tables and `Label: value` lines are pulled out first and use the
+    column rules. In the rest, candidate words (known values, patterns, capitalised words not in an
+    embedded English list, words in name spots, first-name list hits) become `[NAME_n]` unless the person
+    keeps them in `approve`, on a terminal. The agent sees counts only; `review` shows counts for text.
+    Word decisions live in the private folder (`words.json`, as secret as the mapping) and are hashed into
+    the approval. New words since approval become stand-ins and scrub exits 1. Lists: SCOWL size 60
+    (lower-case entries only; its capitalised entries include surnames) and Ontario plus Quebec first
+    names, gzipped with `go:embed`, notices in `THIRD_PARTY.md`. `.eml`/`.mbox` later, hand-parsed
+    (`net/mail` links `net`). First numbers: 22-27 review words on a small shop folder; about 150 on an
+    invented 200-email inbox, of which about 30 are words a person keeps.

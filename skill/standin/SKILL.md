@@ -30,16 +30,20 @@ always gets the same stand-in, so you can still match a payment to an invoice.
 3. Keep every stand-in exactly as it is: same brackets, same capitals, same number.
    `[PERSON_1]` is right. `Person 1`, `[person_1]` and `PERSON_1` will not be put back.
 4. Never make up a real-looking value to replace a stand-in. Leave the stand-in.
-5. Never run `standin approve`, `standin restore` or `standin init`, not even through another
-   program (`sh -c`, `script`, `expect`). Only the person runs them: approve says yes to showing
-   real data, restore shows real values, and init sets up the guards.
+5. Never run `standin approve`, `standin restore`, `standin show` or `standin init`, not even
+   through another program (`sh -c`, `script`, `expect`). Only the person runs them: approve says
+   yes to showing real data, restore and show show real values, and init sets up the guards.
 6. Never pass `--private` or `--project` to standin. Standin picks those places itself, so the
    secret stays where you cannot reach it.
 7. In the shell, name files inside `scrubbed/` or `shape/`. Do not use wildcards (`* ? [ {`) or
    whole-folder tools (`grep -r`, `rg`, `find`, `tree`) on the project folder. Write
    `grep -rn word scrubbed/`, not `grep -rn word .`.
 8. If the person pastes a real name or number to you, do not repeat it. Ask them to use the
-   stand-in instead.
+   stand-in instead. (By default a prompt guard stops a message that holds a real value Standin
+   knows. The person can turn it off with `standin init --no-prompt-guard` if they talk about
+   their own records on purpose. Either way, do not repeat real values.)
+9. If the person asks who a stand-in is, tell them to run `standin show PERSON_9` (with that
+   stand-in) in their own terminal.
 
 ## Setup: once per kind of file
 
@@ -62,9 +66,11 @@ The person does the steps marked **(person)**. You can run the others if you hav
      person.
 4. **(person)** Runs `standin review` to read the rules as a plain table.
 5. **(person)** Runs `standin approve` in their own terminal. It asks them yes or no for each
-   `keep`. You cannot do this step, and you should not try. If the config changes later, they
+   `keep` and each `scan`. You cannot do this step, and you should not try. If the config changes later, they
    must approve again.
-6. Run `standin scrub` (or ask the person to). It writes the files in `scrubbed/`.
+6. Run `standin scrub` (or ask the person to). It writes the files in `scrubbed/`. If the config
+   has a `keep` or `scan` that is not approved yet, scrub stops and writes nothing: ask the person
+   to run `standin approve`.
 7. If a step says no and stops (exit code 2), read the message, fix the cause, and try again.
    Do not try to get around it.
 

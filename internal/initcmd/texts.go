@@ -25,8 +25,8 @@ This project uses standin to keep private details away from AI agents.
   folder. Never look for it, read it or ask for it.
 - Keep every stand-in exactly as it is in anything you write. The person puts real values back with
   ` + "`standin restore`" + `.
-- Never run ` + "`standin approve`" + `, ` + "`standin restore`" + ` or ` + "`standin init`" + `, not even through another
-  program. Only the person runs them. Never pass ` + "`--private`" + ` or ` + "`--project`" + ` to standin.
+- Never run ` + "`standin approve`" + `, ` + "`standin restore`" + `, ` + "`standin show`" + ` or ` + "`standin init`" + `, not even
+  through another program. Only the person runs them. Never pass ` + "`--private`" + ` or ` + "`--project`" + ` to standin.
 - Do not use wildcards or whole-folder searches outside ` + "`scrubbed/`" + `. Name files in ` + "`scrubbed/`" + `,
   like ` + "`grep -rn word scrubbed/`" + `.
 - New file? Read its shape file in ` + "`shape/`" + ` and propose rules in ` + "`standin.config.json`" + `.

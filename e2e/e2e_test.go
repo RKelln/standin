@@ -282,8 +282,9 @@ func TestScrubPrintsPrivatePath(t *testing.T) {
 	p := newProject(t)
 	p.addRaw("invoices.csv", "invoices.csv")
 	p.useConfig()
+	p.approve()
 	r := p.run(nil, "scrub", "raw/invoices.csv")
-	p.wantCode(r, 1)
+	p.wantCode(r, 0, 1)
 	priv := p.findPrivateDir()
 	if !strings.Contains(r.stdout+r.stderr, filepath.Base(priv)) {
 		t.Errorf("scrub should print the private store path %s\n%s", priv, r)
@@ -310,7 +311,8 @@ func TestRestoreStandins(t *testing.T) {
 	p := newProject(t)
 	p.addRaw("invoices.csv", "invoices.csv")
 	p.useConfig()
-	p.wantCode(p.run(nil, "scrub", "raw/invoices.csv"), 1) // unapproved: fine for this test
+	p.approve()
+	p.wantCode(p.run(nil, "scrub", "raw/invoices.csv"), 0, 1)
 	rawInv := parseCSV(t, string(fixture(t, "invoices.csv")))
 	scrInv := parseCSV(t, readFile(t, p.find("scrubbed", "invoices.csv")))
 	persons := map[string]string{}
@@ -467,16 +469,22 @@ func TestRefusesStandinShapedInput(t *testing.T) {
 	}
 }
 
-// Default-deny: keeps count only with an approval that matches the config.
-func TestUnapprovedKeepIsTokenized(t *testing.T) {
+// Default-deny: a config with keeps or scans needs an approval that matches
+// it. Without one, scrub refuses and writes nothing, not even the mapping
+// (decision 33).
+func TestUnapprovedScrubRefused(t *testing.T) {
 	p := newProject(t)
 	p.addRaw("invoices.csv", "invoices.csv")
 	p.useConfig()
 	r := p.run(nil, "scrub", "raw/invoices.csv")
-	if r.code != 1 {
-		t.Errorf("scrub without approval: want exit 1 (warning)\n%s", r)
+	p.wantCode(r, 2)
+	if !strings.Contains(r.stderr, "standin approve") {
+		t.Errorf("the refusal should say to run standin approve\n%s", r)
 	}
-	assertTokenized(t, readFile(t, p.find("scrubbed", "invoices.csv")), "Invoice", "Date", "Amount", "Status")
+	p.noFilesIn("scrubbed")
+	if _, err := os.Stat(filepath.Join(p.privateDir(), "mapping.json")); err == nil {
+		t.Error("an unapproved scrub wrote the mapping")
+	}
 }
 
 func TestConfigChangeVoidsApproval(t *testing.T) {
@@ -487,21 +495,11 @@ func TestConfigChangeVoidsApproval(t *testing.T) {
 	cfg := strings.Replace(string(fixture(t, "standin.config.json")), "customer names", "customer full names", 1)
 	p.write("standin.config.json", []byte(cfg))
 	r := p.run(nil, "scrub", "raw/invoices.csv")
-	if r.code != 1 {
-		t.Errorf("scrub after the config changed: want exit 1\n%s", r)
+	p.wantCode(r, 2)
+	if !strings.Contains(r.stderr, "changed") {
+		t.Errorf("scrub after the config changed: should say the config changed\n%s", r)
 	}
-	assertTokenized(t, readFile(t, p.find("scrubbed", "invoices.csv")), "Amount", "Date")
-}
-
-func assertTokenized(t *testing.T, text string, cols ...string) {
-	t.Helper()
-	for i, row := range parseCSV(t, text) {
-		for _, c := range cols {
-			if v := row[c]; v != "" && !wholeToken.MatchString(v) {
-				t.Errorf("row %d %s: unapproved keep should be a stand-in, got %q", i+2, c, v)
-			}
-		}
-	}
+	p.noFilesIn("scrubbed")
 }
 
 // restoreText writes in to out/name, restores it, and returns the result with

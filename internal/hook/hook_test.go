@@ -262,7 +262,7 @@ func TestMalformedAndArgs(t *testing.T) {
 		{"event mismatch", []string{"claude", "PostToolUse"}, good},
 		{"event missing", []string{"claude", "PreToolUse"}, `{"cwd":"` + jsonEsc(p) + `","tool_name":"Read","tool_input":{"file_path":"a"}}`},
 		{"no project found", []string{"claude", "PreToolUse"}, hookJSON("PreToolUse", t.TempDir(), "Read", map[string]any{"file_path": "a"}, nil)},
-		{"project missing", []string{"claude", "PreToolUse", "--project", filepath.Join(p, "nope")}, good},
+		{"project missing and none found", []string{"claude", "PreToolUse", "--project", filepath.Join(p, "nope")}, hookJSON("PreToolUse", t.TempDir(), "Read", map[string]any{"file_path": "a"}, nil)},
 		{"prompt missing", []string{"claude", "UserPromptSubmit"}, hookJSON("UserPromptSubmit", p, "", nil, nil)},
 		{"prompt not string", []string{"claude", "UserPromptSubmit"}, hookJSON("UserPromptSubmit", p, "", nil, map[string]any{"prompt": 5})},
 		{"post no response", []string{"claude", "PostToolUse"}, hookJSON("PostToolUse", p, "Read", map[string]any{"file_path": "a"}, nil)},
@@ -301,6 +301,38 @@ func TestProjectFromCwd(t *testing.T) {
 	}
 }
 
+// 34: settings from 0.1.0 pass --project with the old place. After a move
+// the hook finds the project from CLAUDE_PROJECT_DIR or cwd and still guards
+// raw/; with neither, it blocks and names the fix.
+func TestMovedProject(t *testing.T) {
+	f := setup(t)
+	gone := filepath.Join(t.TempDir(), "old-place", "shop")
+	args := []string{"claude", "PreToolUse", "--project", gone}
+	read := func(cwd, path string) result {
+		r := run(args, hookJSON("PreToolUse", cwd, "Read", map[string]any{"file_path": path}, nil))
+		record(r)
+		return r
+	}
+	// Found from cwd: raw/ is still guarded, scrubbed/ still readable.
+	if r := read(f.project, "raw/none.csv"); r.code != 2 || !strings.Contains(r.stderr, "standin scrub") {
+		t.Errorf("raw read after a move: %d %q", r.code, r.stderr)
+	}
+	if r := read(f.project, "scrubbed/fresh.csv"); r.code != 0 {
+		t.Errorf("scrubbed read after a move: %d %q", r.code, r.stderr)
+	}
+	// Found from CLAUDE_PROJECT_DIR, even when cwd is elsewhere.
+	t.Setenv("CLAUDE_PROJECT_DIR", f.project)
+	if r := read(t.TempDir(), filepath.Join(f.project, "raw", "fresh.csv")); r.code != 0 || !strings.Contains(r.stdout, "updatedInput") {
+		t.Errorf("env: %d %q %q", r.code, r.stdout, r.stderr)
+	}
+	// An env that does not exist is skipped too; nothing found: block, name the fix.
+	t.Setenv("CLAUDE_PROJECT_DIR", gone)
+	r := read(t.TempDir(), "a.txt")
+	if r.code != 2 || !strings.Contains(r.stderr, "run standin init again in this folder") {
+		t.Errorf("nothing found: %d %q", r.code, r.stderr)
+	}
+}
+
 func TestSymlinkIntoRaw(t *testing.T) {
 	f := setup(t)
 	link := filepath.Join(f.project, "notes", "sneaky.csv")
@@ -325,7 +357,7 @@ func TestUserPrompt(t *testing.T) {
 	}{
 		{"clean", "Please list overdue invoices for [PERSON_1] in scrubbed/fresh.csv.", 0, nil},
 		{"tokens only", "Match [ACCOUNT_1] to [EMAIL_1] and [ORG_1].", 0, nil},
-		{"known name", "Did Zelda Quixote pay?", 2, []string{"[PERSON_1]"}},
+		{"known name", "Did Zelda Quixote pay?", 2, []string{"[PERSON_1]", "typed or pasted into the chat", "standin init --no-prompt-guard"}},
 		{"known name other case and spaces", "did ZELDA   quixote pay", 2, []string{"[PERSON_1]"}},
 		{"known org", "Email brindlewood ferments today", 2, []string{"[ORG_1]"}},
 		{"known account", "acct 4417123456 is late", 2, []string{"[ACCOUNT_1]"}},
@@ -441,7 +473,7 @@ func TestNoMappingYet(t *testing.T) {
 // Runs last by name order within this file is not guaranteed, so it runs every
 // other test itself first, then checks every output it saw.
 func TestNoValueEverPrinted(t *testing.T) {
-	for _, fn := range []func(*testing.T){TestPreToolUse, TestMalformedAndArgs, TestProjectFromCwd, TestSymlinkIntoRaw, TestUserPrompt, TestPostToolUse, TestBadMapping, TestNoMappingYet, TestBashPlaceFlagsDenied, TestBashCatOutsideFolderWithWildcardDenied, TestBashSweepingReadsDenied, TestBashNormalWorkAllowed, TestBashPersonOnlyCommandsDenied, TestPowerShellPersonOnlyDenied, TestHomePathsIntoRaw, TestPostToolUseWarningNamesNothing} {
+	for _, fn := range []func(*testing.T){TestPreToolUse, TestMalformedAndArgs, TestProjectFromCwd, TestMovedProject, TestSymlinkIntoRaw, TestUserPrompt, TestPostToolUse, TestBadMapping, TestNoMappingYet, TestBashPlaceFlagsDenied, TestBashCatOutsideFolderWithWildcardDenied, TestBashSweepingReadsDenied, TestBashNormalWorkAllowed, TestBashPersonOnlyCommandsDenied, TestPowerShellPersonOnlyDenied, TestHomePathsIntoRaw, TestPostToolUseWarningNamesNothing} {
 		fn(t)
 	}
 	if len(allOutput) < 50 {

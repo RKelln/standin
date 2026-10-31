@@ -62,7 +62,7 @@ func atLeast(v, min string) bool {
 	return true
 }
 
-// DenyRules are added to permissions.deny in .claude/settings.json.
+// DenyRules are added to permissions.deny in the settings file init writes.
 func DenyRules(store string) []string {
 	rules := []string{
 		"Read(./raw/**)", "Edit(./raw/**)",
@@ -77,8 +77,11 @@ func DenyRules(store string) []string {
 	return rules
 }
 
-func hookEntry(exe, event, proj, private string) map[string]any {
-	args := []any{"hook", "claude", event, "--project", proj}
+// hookEntry is one standin hook. It names no project folder: the hook finds
+// the project from CLAUDE_PROJECT_DIR or the hook input's cwd, so a moved
+// folder keeps working (decision 34).
+func hookEntry(exe, event, private string) map[string]any {
+	args := []any{"hook", "claude", event}
 	if private != "" {
 		args = append(args, "--private", private)
 	}
@@ -104,44 +107,94 @@ func isOurs(h any) bool {
 	return args[0] == "hook" && args[1] == "claude"
 }
 
-// planClaude merges standin's hooks and deny rules into .claude/settings.json.
-func planClaude(proj, exe, private, store string) ([]change, error) {
-	rel := filepath.Join(".claude", "settings.json")
-	p := filepath.Join(proj, rel)
-	old, err := os.ReadFile(p)
-	settings := map[string]any{}
-	exists := err == nil
+// Settings files standin may write (decision 36).
+var (
+	sharedSettings = filepath.Join(".claude", "settings.json")
+	localSettings  = filepath.Join(".claude", "settings.local.json")
+)
+
+// claudeOpts says how to set up Claude Code.
+type claudeOpts struct {
+	exe, private, store string
+	shared              bool // write .claude/settings.json, not settings.local.json
+	promptGuard         bool // add the UserPromptSubmit hook
+}
+
+// settingsFile is one Claude Code settings file, read as JSON.
+type settingsFile struct {
+	rel    string
+	path   string
+	old    []byte
+	exists bool
+	m      map[string]any
+}
+
+func readSettings(proj, rel string) (*settingsFile, error) {
+	f := &settingsFile{rel: rel, path: filepath.Join(proj, rel), m: map[string]any{}}
+	old, err := os.ReadFile(f.path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, errors.New("cannot read " + rel + ": " + err.Error())
 	}
-	if exists && len(bytes.TrimSpace(old)) > 0 {
+	f.old, f.exists = old, err == nil
+	if f.exists && len(bytes.TrimSpace(old)) > 0 {
 		dec := json.NewDecoder(bytes.NewReader(old))
 		dec.UseNumber()
-		if err := dec.Decode(&settings); err != nil || settings == nil {
+		if err := dec.Decode(&f.m); err != nil || f.m == nil {
 			return nil, errors.New(rel + " is not a JSON object standin can read. Fix it by hand (or move it away), then run standin init again.")
 		}
 		if dec.More() {
 			return nil, errors.New(rel + " has extra text after the JSON. Fix it by hand, then run standin init again.")
 		}
 	}
+	return f, nil
+}
 
-	hooks, err := objAt(settings, "hooks", rel)
-	if err != nil {
-		return nil, err
+// change returns the write for f, or nil if its meaning did not change.
+func (f *settingsFile) change(note string) ([]change, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(f.m); err != nil {
+		return nil, errors.New("cannot write the settings: " + err.Error())
 	}
-	events := []struct {
-		name, matcher string
-	}{{"PreToolUse", hook.ToolMatcher()}, {"PostToolUse", ""}, {"UserPromptSubmit", ""}}
-	for _, ev := range events {
-		var groups []any
-		if v, ok := hooks[ev.name]; ok {
-			g, ok := v.([]any)
-			if !ok {
-				return nil, errors.New(rel + ": hooks." + ev.name + " is not a list. Fix it by hand, then run standin init again.")
-			}
-			groups = g
+	if f.exists {
+		if bytes.Equal(buf.Bytes(), f.old) {
+			return nil, nil
+		}
+		// Compare meaning, not bytes, so a re-run on a hand-formatted file changes nothing.
+		var a, b any
+		if json.Unmarshal(f.old, &a) == nil && json.Unmarshal(buf.Bytes(), &b) == nil && jsonEqual(a, b) {
+			return nil, nil
+		}
+	}
+	what := "made"
+	if f.exists {
+		what = "updated"
+	}
+	return []change{{rel: f.rel, path: f.path, data: buf.Bytes(), perm: 0o644, what: what, note: note}}, nil
+}
+
+// stripOurs removes every hook standin wrote, from every event, and drops
+// groups and events left empty by that. Other hooks are kept as they were.
+// It reports whether it removed any.
+func stripOurs(f *settingsFile) (bool, error) {
+	v, ok := f.m["hooks"]
+	if !ok || v == nil {
+		return false, nil
+	}
+	hooks, ok := v.(map[string]any)
+	if !ok {
+		return false, errors.New(f.rel + ": hooks is not an object. Fix it by hand, then run standin init again.")
+	}
+	removed := false
+	for name, ev := range hooks {
+		groups, ok := ev.([]any)
+		if !ok {
+			return false, errors.New(f.rel + ": hooks." + name + " is not a list. Fix it by hand, then run standin init again.")
 		}
 		var kept []any
+		changed := false
 		for _, g := range groups {
 			gm, ok := g.(map[string]any)
 			if !ok {
@@ -159,22 +212,80 @@ func planClaude(proj, exe, private, store string) ([]change, error) {
 					rest = append(rest, h)
 				}
 			}
-			if len(rest) == 0 && len(hs) > 0 {
+			if len(rest) == len(hs) {
+				kept = append(kept, gm)
+				continue
+			}
+			changed = true
+			if len(rest) == 0 {
 				continue // a group that held only standin's hook
 			}
-			if len(rest) != len(hs) {
-				gm["hooks"] = rest
-			}
+			gm["hooks"] = rest
 			kept = append(kept, gm)
 		}
-		group := map[string]any{"hooks": []any{hookEntry(exe, ev.name, proj, private)}}
+		if !changed {
+			continue
+		}
+		removed = true
+		if len(kept) == 0 {
+			delete(hooks, name)
+		} else {
+			hooks[name] = kept
+		}
+	}
+	if removed && len(hooks) == 0 {
+		delete(f.m, "hooks")
+	}
+	return removed, nil
+}
+
+// planClaude merges standin's hooks and deny rules into the chosen settings
+// file, and removes standin's hooks from the other one (so an upgrade from
+// v0.1.0, which wrote settings.json, does not keep an old copy).
+func planClaude(proj string, o claudeOpts) ([]change, error) {
+	rel, otherRel := localSettings, sharedSettings
+	if o.shared {
+		rel, otherRel = sharedSettings, localSettings
+	}
+	f, err := readSettings(proj, rel)
+	if err != nil {
+		return nil, err
+	}
+	other, err := readSettings(proj, otherRel)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := stripOurs(f); err != nil {
+		return nil, err
+	}
+	hooks, err := objAt(f.m, "hooks", rel)
+	if err != nil {
+		return nil, err
+	}
+	events := []struct {
+		name, matcher string
+	}{{"PreToolUse", hook.ToolMatcher()}, {"PostToolUse", ""}}
+	if o.promptGuard {
+		events = append(events, struct{ name, matcher string }{"UserPromptSubmit", ""})
+	}
+	for _, ev := range events {
+		var groups []any
+		if v, ok := hooks[ev.name]; ok {
+			g, ok := v.([]any)
+			if !ok {
+				return nil, errors.New(rel + ": hooks." + ev.name + " is not a list. Fix it by hand, then run standin init again.")
+			}
+			groups = g
+		}
+		group := map[string]any{"hooks": []any{hookEntry(o.exe, ev.name, o.private)}}
 		if ev.matcher != "" {
 			group["matcher"] = ev.matcher
 		}
-		hooks[ev.name] = append(kept, group)
+		hooks[ev.name] = append(groups, group)
 	}
 
-	perms, err := objAt(settings, "permissions", rel)
+	perms, err := objAt(f.m, "permissions", rel)
 	if err != nil {
 		return nil, err
 	}
@@ -192,35 +303,31 @@ func planClaude(proj, exe, private, store string) ([]change, error) {
 			have[s] = true
 		}
 	}
-	for _, r := range DenyRules(store) {
+	for _, r := range DenyRules(o.store) {
 		if !have[r] {
 			deny = append(deny, r)
 		}
 	}
 	perms["deny"] = deny
 
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(settings); err != nil {
-		return nil, errors.New("cannot write the settings: " + err.Error())
+	plan, err := f.change(" (hooks and deny rules)")
+	if err != nil {
+		return nil, err
 	}
-	if exists && bytes.Equal(buf.Bytes(), old) {
-		return nil, nil
-	}
-	if exists {
-		// Compare meaning, not bytes, so a re-run on a hand-formatted file changes nothing.
-		var a, b any
-		if json.Unmarshal(old, &a) == nil && json.Unmarshal(buf.Bytes(), &b) == nil && jsonEqual(a, b) {
-			return nil, nil
+	if other.exists {
+		removed, err := stripOurs(other)
+		if err != nil {
+			return nil, err
+		}
+		if removed {
+			c, err := other.change(" (took out standin's old hooks; they are now in " + filepath.ToSlash(rel) + ". Other settings kept)")
+			if err != nil {
+				return nil, err
+			}
+			plan = append(plan, c...)
 		}
 	}
-	what := "made"
-	if exists {
-		what = "updated"
-	}
-	return []change{{rel: rel, path: p, data: buf.Bytes(), perm: 0o644, what: what, note: " (hooks and deny rules)"}}, nil
+	return plan, nil
 }
 
 func objAt(m map[string]any, key, rel string) (map[string]any, error) {

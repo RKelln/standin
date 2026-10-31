@@ -112,7 +112,7 @@ func TestBashNormalWorkAllowed(t *testing.T) {
 	}
 }
 
-// approve, restore and init are for the person only, in any wrapper (decision 25).
+// approve, restore, show and init are for the person only, in any wrapper (decision 25).
 func TestBashPersonOnlyCommandsDenied(t *testing.T) {
 	f := setup(t)
 	for _, cmd := range []string{
@@ -130,6 +130,9 @@ func TestBashPersonOnlyCommandsDenied(t *testing.T) {
 		`s\tandin approve`,
 		"STANDIN.EXE Approve",
 		"echo hi; standin init --harness claude",
+		"standin show PERSON_9",
+		"standin show [PERSON_9] [ORG_1]",
+		`script -qc "standin show PERSON_9" /dev/null`,
 	} {
 		r := bashPre(t, f, cmd)
 		if r.code != 2 || !strings.Contains(r.stderr, "Only the person") {
@@ -137,7 +140,7 @@ func TestBashPersonOnlyCommandsDenied(t *testing.T) {
 		}
 	}
 	// Not standin: common commands with the same words still run.
-	for _, cmd := range []string{"git restore scrubbed/x.md", "npm init -y", "standin scrub raw/init.csv"} {
+	for _, cmd := range []string{"git restore scrubbed/x.md", "npm init -y", "standin scrub raw/init.csv", "git show HEAD", "standin shape raw/show.csv"} {
 		if r := bashPre(t, f, cmd); r.code != 0 {
 			t.Errorf("%q: denied (%q)", cmd, r.stderr)
 		}

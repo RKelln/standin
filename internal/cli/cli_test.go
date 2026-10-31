@@ -152,16 +152,20 @@ func TestTwoFilesSameStandinAndTwoPassScan(t *testing.T) {
 	}
 }
 
-func TestUnapprovedKeepIsTokenized(t *testing.T) {
+// 33: an unapproved config with a keep or scan stops scrub; nothing is written.
+func TestUnapprovedKeepRefused(t *testing.T) {
 	p := newTP(t)
 	p.write("raw/invoices.csv", invoices)
 	p.write("standin.config.json", cfg)
 	r := p.run("", false, "scrub", "raw/invoices.csv")
-	if r.code != 1 || !strings.Contains(r.stderr, "not been approved") {
+	if r.code != 2 || !strings.Contains(r.stderr, "not been approved") || !strings.Contains(r.stderr, "standin approve") {
 		t.Fatalf("%+v", r)
 	}
-	if out := p.read("scrubbed/invoices.csv"); strings.Contains(out, "INV-1") || strings.Contains(out, "10.00") {
-		t.Errorf("unapproved keep was kept:\n%s", out)
+	if p.exists("scrubbed") {
+		t.Error("unapproved scrub wrote output")
+	}
+	if m, _ := filepath.Glob(filepath.Join(p.home, "projects", "*", "mapping.json")); len(m) > 0 {
+		t.Error("unapproved scrub wrote the mapping")
 	}
 }
 
@@ -174,12 +178,13 @@ func TestConfigEditVoidsApproval(t *testing.T) {
 		t.Fatalf("approved scrub: %+v", r)
 	}
 	p.write("standin.config.json", strings.Replace(cfg, `"ours"`, `"our numbers"`, 1))
+	before := p.read("scrubbed/invoices.csv")
 	r := p.run("", false, "scrub", "raw/invoices.csv")
-	if r.code != 1 || !strings.Contains(r.stderr, "changed after it was approved") {
+	if r.code != 2 || !strings.Contains(r.stderr, "changed after it was approved") {
 		t.Fatalf("%+v", r)
 	}
-	if strings.Contains(p.read("scrubbed/invoices.csv"), "INV-1") {
-		t.Error("keep used after the config changed")
+	if p.read("scrubbed/invoices.csv") != before {
+		t.Error("scrub wrote output after the config changed")
 	}
 }
 
@@ -220,6 +225,7 @@ func TestCheckNeverPrintsValues(t *testing.T) {
 	p := newTP(t)
 	p.write("raw/invoices.csv", invoices)
 	p.write("standin.config.json", cfg)
+	p.approve()
 	p.run("", false, "scrub", "raw/invoices.csv")
 	text := "Please ask Ann Fakelee, or mail bo.fakeson@example.com, or 416-555-0199 or card 4111 1111 1111 1111.\n"
 	r := p.run(text, true, "check", "-") // on a screen: full detail
@@ -365,6 +371,7 @@ func TestRestoreDashNeedsScreen(t *testing.T) {
 	p := newTP(t)
 	p.write("raw/invoices.csv", invoices)
 	p.write("standin.config.json", cfg)
+	p.approve()
 	p.run("", false, "scrub", "raw/invoices.csv")
 	r := p.run("Hi [PERSON_1]\n", false, "restore", "-")
 	if r.code != 2 || r.stdout != "" {

@@ -21,7 +21,7 @@ import (
 type plan struct {
 	action   string
 	category string
-	why      string // "config", "default", "free text", "not approved"
+	why      string // "config", "default", "free text"
 }
 
 type scrubFile struct {
@@ -116,6 +116,12 @@ func runScrub(c *ctx) error {
 	if err != nil {
 		return err
 	}
+	if !approved {
+		// Refuse rather than tokenize keep and scan columns as VALUE: those
+		// whole-cell stand-ins would join the mapping, and a later approved
+		// scrub would then swap whole cells in scan columns (decision 33).
+		return fail.New("not-approved", "%s The config keeps or scans some columns, so a person must approve it first. I wrote nothing. Run `standin approve` yourself, in your own terminal, then run `standin scrub` again.", why)
+	}
 	mapPath := filepath.Join(privDir, store.MappingFile)
 	m, _, err := mapping.Load(mapPath)
 	if err != nil {
@@ -136,15 +142,11 @@ func runScrub(c *ctx) error {
 			return err
 		}
 		sf := &scrubFile{f: f, d: d}
-		if err := c.planColumns(cfg, sf, approved); err != nil {
+		if err := c.planColumns(cfg, sf); err != nil {
 			return err
 		}
 		sfs = append(sfs, sf)
 	}
-	if !approved {
-		c.warn("%s Every column marked keep or scan is tokenized instead. Run `standin approve` yourself to use them.", why)
-	}
-
 	// Pass 1: tokenize columns (and data-like headers) in every file, so
 	// every known value is in the mapping before any scan.
 	// Dropped values join the mapping too (they are not written anywhere),
@@ -251,7 +253,8 @@ func headerStandin(m *mapping.Mapping, name string) string {
 }
 
 // planColumns decides what to do with each column of a file.
-func (c *ctx) planColumns(cfg *config.Config, sf *scrubFile, approved bool) error {
+// The config must already be approved (runScrub refuses otherwise).
+func (c *ctx) planColumns(cfg *config.Config, sf *scrubFile) error {
 	d, f := sf.d, sf.f
 	rule := cfg.RuleFor(f.rel)
 	if rule == nil {
@@ -278,12 +281,6 @@ func (c *ctx) planColumns(cfg *config.Config, sf *scrubFile, approved bool) erro
 			}
 		}
 		switch {
-		case found && (col.Action == config.Keep || col.Action == config.Scan) && !approved:
-			cat := "VALUE"
-			if name == dataset.KeyColumn {
-				cat = "KEY"
-			}
-			p = plan{config.Tokenize, cat, "not approved"}
 		case found:
 			p = plan{col.Action, col.Category, "config"}
 		case name == dataset.KeyColumn:

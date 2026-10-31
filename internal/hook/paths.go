@@ -31,18 +31,24 @@ func StoreDir(project, private string) (string, error) {
 	return corestore.PrivateDir(project, private, os.Getenv("STANDIN_HOME"))
 }
 
-// FindProject returns the project root. Order: the explicit flag, then
-// CLAUDE_PROJECT_DIR, then the nearest folder at or above cwd that holds
-// standin.config.json.
+// FindProject returns the project root. Order: CLAUDE_PROJECT_DIR (Claude
+// Code sets it to the folder whose settings it loaded), then the --project
+// flag (written by standin 0.1.0), then the nearest folder at or above cwd
+// that holds standin.config.json. A place that does not exist is skipped, so
+// a moved folder still works; if none is found it is an error (decision 34).
 func FindProject(flagDir, cwd string) (string, error) {
-	if flagDir != "" {
-		return checkDir(flagDir)
-	}
 	if env := os.Getenv("CLAUDE_PROJECT_DIR"); env != "" {
-		return checkDir(env)
+		if d, err := checkDir(env); err == nil {
+			return d, nil
+		}
+	}
+	if flagDir != "" {
+		if d, err := checkDir(flagDir); err == nil {
+			return d, nil
+		}
 	}
 	if cwd == "" {
-		return "", errors.New("no project folder given and no cwd in the hook input")
+		return "", errors.New("cannot find the project folder, and the hook input has no cwd")
 	}
 	dir, err := filepath.Abs(cwd)
 	if err != nil {
@@ -54,7 +60,7 @@ func FindProject(flagDir, cwd string) (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("cannot find " + ConfigName + " in this folder or above it")
+			return "", errors.New("cannot find the project folder: no " + ConfigName + " in this folder or above it")
 		}
 		dir = parent
 	}

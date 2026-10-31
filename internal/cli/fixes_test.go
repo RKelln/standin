@@ -22,15 +22,16 @@ func scrubOut(t *testing.T, raw, cfg string) (res, string) {
 	return r, p.read("scrubbed/inv.csv")
 }
 
-// 24: scan leaves unknown words in, so it needs approval like keep.
-func TestUnapprovedScanIsTokenized(t *testing.T) {
+// 24, 33: scan leaves unknown words in, so it needs approval like keep;
+// without it scrub refuses and writes nothing.
+func TestUnapprovedScanRefused(t *testing.T) {
 	r, out := scrubOut(t, "Customer\nZelda Quorn\n",
 		`{"version":1,"files":[{"match":"raw/*.csv","columns":{"Customer":{"action":"scan"}}}]}`)
-	if strings.Contains(out, "Zelda Quorn") || out != "Customer\n[VALUE_1]\n" {
-		t.Errorf("unapproved scan column: got\n%s", out)
+	if out != "" {
+		t.Errorf("unapproved scan column: wrote\n%s", out)
 	}
-	if r.code != 1 || !strings.Contains(r.stderr, "keep or scan is tokenized") {
-		t.Errorf("want a warning, exit 1: %+v", r)
+	if r.code != 2 || !strings.Contains(r.stderr, "standin approve") || strings.Contains(r.stderr, "Zelda") {
+		t.Errorf("want a refusal, exit 2: %+v", r)
 	}
 }
 

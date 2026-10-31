@@ -41,28 +41,78 @@ func PrivateDir(project, override, home string) (string, error) {
 			return "", fail.New("private", "I could not work out the full path of --private.")
 		}
 	} else {
-		if home == "" {
-			h, err := os.UserHomeDir()
-			if err != nil {
-				return "", fail.New("private", "I could not find your home folder. Set STANDIN_HOME to a private folder, then try again.")
-			}
-			home = filepath.Join(h, ".standin")
-		}
-		home, err = filepath.Abs(home)
+		root, err := projectsRoot(home)
 		if err != nil {
-			return "", fail.New("private", "I could not work out the full path of STANDIN_HOME.")
+			return "", err
 		}
 		sum := sha256.Sum256([]byte(absProject))
-		name := filepath.Base(absProject)
-		if name == "" || name == string(filepath.Separator) || name == "." {
-			name = "project"
-		}
-		dir = filepath.Join(home, "projects", name+"-"+hex.EncodeToString(sum[:])[:8])
+		dir = filepath.Join(root, folderName(absProject)+"-"+hex.EncodeToString(sum[:])[:8])
 	}
 	if Inside(dir, absProject) {
 		return "", fail.New("private-inside", "The private folder must not be inside the project folder, because the AI can read the project folder. Choose a folder outside it.")
 	}
 	return dir, nil
+}
+
+// projectsRoot is $STANDIN_HOME/projects (home defaults to ~/.standin).
+func projectsRoot(home string) (string, error) {
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return "", fail.New("private", "I could not find your home folder. Set STANDIN_HOME to a private folder, then try again.")
+		}
+		home = filepath.Join(h, ".standin")
+	}
+	home, err := filepath.Abs(home)
+	if err != nil {
+		return "", fail.New("private", "I could not work out the full path of STANDIN_HOME.")
+	}
+	return filepath.Join(home, "projects"), nil
+}
+
+func folderName(absProject string) string {
+	name := filepath.Base(absProject)
+	if name == "" || name == string(filepath.Separator) || name == "." {
+		name = "project"
+	}
+	return name
+}
+
+// SameNameDirs lists private folders (other than dir) made for a project
+// folder with the same name as project: what is left behind when a project
+// folder is moved, since the private folder is keyed by the full path.
+func SameNameDirs(project, dir, home string) []string {
+	root, err := projectsRoot(home)
+	if err != nil {
+		return nil
+	}
+	abs, err := filepath.Abs(project)
+	if err != nil {
+		return nil
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = real
+	}
+	prefix := folderName(abs) + "-"
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		n := e.Name()
+		if !e.IsDir() || !strings.HasPrefix(n, prefix) || len(n) != len(prefix)+8 {
+			continue
+		}
+		if _, err := hex.DecodeString(n[len(prefix):]); err != nil {
+			continue
+		}
+		p := filepath.Join(root, n)
+		if p != dir {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Inside reports whether path is dir or inside dir.

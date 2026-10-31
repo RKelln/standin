@@ -66,7 +66,7 @@ func runReview(c *ctx) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(c.env.Stdout, "Config: %s\n\n", filepath.Join(c.project, config.FileName))
+	fmt.Fprintf(c.env.Stdout, "Config: %s\n\n", config.FileName)
 	printReview(c.env.Stdout, cfg)
 	privDir, err := c.privateDir(false)
 	if err != nil {
@@ -83,7 +83,7 @@ func runReview(c *ctx) error {
 	case approved:
 		fmt.Fprintln(c.env.Stdout, "Approved: yes. The keeps and scans above will be used.")
 	default:
-		fmt.Fprintf(c.env.Stdout, "Approved: no. %s Until you run `standin approve`, keeps and scans are tokenized.\n", why)
+		fmt.Fprintf(c.env.Stdout, "Approved: no. %s `standin scrub` will not run until you run `standin approve` yourself, in your own terminal.\n", why)
 		c.warnings++
 	}
 	return nil
@@ -102,7 +102,7 @@ func runApprove(c *ctx) error {
 		return err
 	}
 	out := c.env.Stdout
-	fmt.Fprintf(out, "Config: %s\n\n", filepath.Join(c.project, config.FileName))
+	fmt.Fprintf(out, "Config: %s\n\n", config.FileName)
 	printReview(out, cfg)
 	fmt.Fprintln(out)
 	in := bufio.NewReader(c.env.Stdin)

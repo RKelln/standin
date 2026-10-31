@@ -64,14 +64,17 @@ standin check  [--project DIR] FILE... | -    finds real values (from mapping) a
                                               terminal prints token names, pattern kinds and lines, never
                                               the value; off a terminal only "found something" or "found
                                               nothing"; exit 1 if any
+standin show [--project DIR] STANDIN...      real value of each stand-in (PERSON_9 or [PERSON_9]); only
+                                              when stdout is a terminal, else exit 2; unknown: exit 1 (v0.2)
 standin report [--project DIR]                a data-free issue report (version, OS, file kinds, shapes,
                                               last errors) to stdout
 standin version
 ```
 
-`scrub` without an approval whose hash matches the current config: every `keep` and `scan` column is
-tokenized as `VALUE` (`KEY` for `(key)`) and it warns, exit 1. Changing the config voids the approval.
-A config with no `keep` and no `scan` needs no approval.
+`scrub` without an approval whose hash matches the current config, when the config has any `keep` or
+`scan`: it refuses (exit 2), writes nothing (not even the mapping) and says to run `standin approve` in
+the person's own terminal (v0.2, decision 33; v0.1.0 tokenized them as `VALUE` and warned). Changing the
+config voids the approval. A config with no `keep` and no `scan` needs no approval.
 
 ### Input formats (MVP)
 
@@ -163,7 +166,8 @@ trimming). Two inputs that would land on the same `restored/` name: refuse. Exit
    `restored/a/b.md`; a file outside `scrubbed/` -> `restored/<base name>`.
 2. `scrub` of many files runs in two passes: tokenize columns of every file first, then `scan` columns,
    so a name met in a later file is still known.
-3. Exit codes: `shape` 0, or 1 if it flagged a header or file name. `scrub` 0 when approved and clean.
+3. Exit codes: `shape` 0, or 1 if it flagged a header or file name. `scrub` 0 when approved and clean,
+   2 when a needed approval is missing.
    A config with no `keep` and no `scan` needs no approval.
 4. Restore and check reports go to stderr; stdout carries only the restored text (for `-`). `restore -`
    refuses (exit 2) when stdout is not a terminal: restore is for the person, not the agent.
@@ -196,3 +200,14 @@ trimming). Two inputs that would land on the same `restored/` name: refuse. Exit
    OpenCode; `standin init`; skill text including "report issues with `standin report`").
 3. V: fresh review, then fixes. Then success checks run and recorded in `HANDOFF.md`.
 4. Release v0.1.0 for the workshop; Ryan tests the curl install on the Mac mini.
+
+## v0.2 (2026-10-30, from the Get2Know trial)
+
+Source: `docs/get2know-needs.md`. Decisions: `docs/DESIGN.md` 32-38. These replace the contract above
+where they differ (unapproved scrub now refuses; hooks take no `--project`; `show` is new; settings go to
+`settings.local.json` unless `init --shared`; `init --no-prompt-guard` skips the prompt hook).
+
+| Track | Owner | Output |
+|---|---|---|
+| G. Fixes 2-7 | builder agent | DESIGN 32-37, tests, smoke test updated |
+| F. Free text | research agent, then builder | `docs/research/free-text.md` (design, list licences, candidate counts on the Get2Know fixtures), then `.md`/`.txt` support |

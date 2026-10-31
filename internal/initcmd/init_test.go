@@ -86,13 +86,16 @@ func TestInitFreshAndIdempotent(t *testing.T) {
 			t.Errorf("no %s/", d)
 		}
 	}
-	for _, f := range []string{"standin.config.json", "AGENTS.md", ".claude/settings.json",
+	for _, f := range []string{"standin.config.json", "AGENTS.md", ".claude/settings.local.json",
 		"standin-harness/codex-UNTESTED.md", "standin-harness/opencode-UNTESTED.md"} {
 		if _, err := os.Stat(filepath.Join(p, f)); err != nil {
 			t.Errorf("no %s", f)
 		}
 	}
-	s := readJSON(t, filepath.Join(p, ".claude", "settings.json"))
+	if _, err := os.Stat(filepath.Join(p, ".claude", "settings.json")); err == nil {
+		t.Error("the shared settings.json was written without --shared")
+	}
+	s := readJSON(t, filepath.Join(p, ".claude", "settings.local.json"))
 	hooks := s["hooks"].(map[string]any)
 	for _, ev := range []string{"PreToolUse", "PostToolUse", "UserPromptSubmit"} {
 		groups := hooks[ev].([]any)
@@ -104,8 +107,8 @@ func TestInitFreshAndIdempotent(t *testing.T) {
 			t.Errorf("%s hook wrong: %v", ev, h)
 		}
 		args := h["args"].([]any)
-		if args[0] != "hook" || args[1] != "claude" || args[2] != ev || args[4] != p {
-			t.Errorf("%s args wrong: %v", ev, args)
+		if len(args) != 3 || args[0] != "hook" || args[1] != "claude" || args[2] != ev {
+			t.Errorf("%s args wrong (want no --project): %v", ev, args)
 		}
 	}
 	deny := s["permissions"].(map[string]any)["deny"].([]any)
@@ -170,7 +173,7 @@ func TestInitMergesExisting(t *testing.T) {
 	must(os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte("# My rules\n\nBe kind."), 0o644))
 	must(os.WriteFile(filepath.Join(p, "standin.config.json"), []byte(`{"version":1,"files":[{"match":"raw/a.csv","columns":{}}]}`), 0o644))
 
-	r := runInit(t, "--project", p, "--bin", "/new/standin")
+	r := runInit(t, "--project", p, "--bin", "/new/standin", "--shared")
 	if r.code != 0 {
 		t.Fatalf("code %d: %s", r.code, r.err)
 	}
@@ -224,7 +227,7 @@ func TestInitMergesExisting(t *testing.T) {
 	// An edited block is refreshed in place, text around it kept.
 	edited := strings.Replace(string(ag), "Never read", "Maybe read", 1) + "\nAfter.\n"
 	must(os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte(edited), 0o644))
-	if r := runInit(t, "--project", p, "--bin", "/new/standin"); r.code != 0 {
+	if r := runInit(t, "--project", p, "--bin", "/new/standin", "--shared"); r.code != 0 {
 		t.Fatal(r.err)
 	}
 	ag2, _ := os.ReadFile(filepath.Join(p, "AGENTS.md"))
@@ -258,8 +261,16 @@ func TestInitRefusals(t *testing.T) {
 		}, nil, "hooks is not an object"},
 		{"deny not list", nil, func(t *testing.T, p string) {
 			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
-			os.WriteFile(filepath.Join(p, ".claude", "settings.json"), []byte(`{"permissions": {"deny": "x"}}`), 0o644)
+			os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte(`{"permissions": {"deny": "x"}}`), 0o644)
 		}, nil, "deny is not a list"},
+		{"shared deny not list", nil, func(t *testing.T, p string) {
+			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
+			os.WriteFile(filepath.Join(p, ".claude", "settings.json"), []byte(`{"permissions": {"deny": "x"}}`), 0o644)
+		}, []string{"--shared"}, "deny is not a list"},
+		{"bad local settings json", nil, func(t *testing.T, p string) {
+			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
+			os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte("{oops"), 0o644)
+		}, nil, "not a JSON object"},
 		{"broken agents block", nil, func(t *testing.T, p string) {
 			os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte(agentsBegin+"\nhalf"), 0o644)
 		}, nil, "broken or doubled"},
@@ -311,7 +322,7 @@ func TestInitClaudeMissingWarns(t *testing.T) {
 	if r.code != 1 || !strings.Contains(r.err, "not found") {
 		t.Fatalf("got %d %q", r.code, r.err)
 	}
-	if _, err := os.Stat(filepath.Join(p, ".claude", "settings.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(p, ".claude", "settings.local.json")); err != nil {
 		t.Error("settings not written when claude is absent")
 	}
 }
@@ -343,5 +354,133 @@ func TestVersionCompare(t *testing.T) {
 func TestStarterConfigParses(t *testing.T) {
 	if _, err := config.Parse([]byte(starterConfig)); err != nil {
 		t.Fatalf("the core config reader refuses the starter config: %v", err)
+	}
+}
+
+func hookEvents(t *testing.T, path string) map[string]any {
+	t.Helper()
+	s := readJSON(t, path)
+	h, _ := s["hooks"].(map[string]any)
+	return h
+}
+
+// 36: a v0.1.0 setup wrote standin's hooks (with --project) into settings.json.
+// A re-run writes settings.local.json and takes only standin's hooks out of
+// settings.json; everything else there stays.
+func TestInitMovesOldHooksToLocal(t *testing.T) {
+	fakeClaude(t, "2.1.300", true, nil)
+	p := newProject(t)
+	if err := os.MkdirAll(filepath.Join(p, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := `{
+  "model": "some-model",
+  "permissions": {"deny": ["Read(./secrets/**)"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "other-tool"}]},
+      {"matcher": "Read", "hooks": [{"type": "command", "command": "/old/standin", "args": ["hook", "claude", "PreToolUse", "--project", "/gone/shop"], "onFailure": "block"}]}
+    ],
+    "PostToolUse": [{"hooks": [{"type": "command", "command": "/old/standin", "args": ["hook", "claude", "PostToolUse", "--project", "/gone/shop"]}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "/old/standin", "args": ["hook", "claude", "UserPromptSubmit", "--project", "/gone/shop"]}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "notify", "timeout": 5}]}]
+  }
+}`
+	shared := filepath.Join(p, ".claude", "settings.json")
+	if err := os.WriteFile(shared, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := runInit(t, "--project", p, "--bin", "/new/standin")
+	if r.code != 0 {
+		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	if !strings.Contains(r.out, "settings.json (took out standin's old hooks") {
+		t.Errorf("does not say it changed settings.json:\n%s", r.out)
+	}
+	var want map[string]any
+	if err := json.Unmarshal([]byte(`{
+  "model": "some-model",
+  "permissions": {"deny": ["Read(./secrets/**)"]},
+  "hooks": {
+    "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "other-tool"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "notify", "timeout": 5}]}]
+  }
+}`), &want); err != nil {
+		t.Fatal(err)
+	}
+	if got := readJSON(t, shared); !jsonEqual(got, want) {
+		b, _ := json.MarshalIndent(got, "", "  ")
+		t.Errorf("settings.json after init:\n%s", b)
+	}
+	local := hookEvents(t, filepath.Join(p, ".claude", "settings.local.json"))
+	for _, ev := range []string{"PreToolUse", "PostToolUse", "UserPromptSubmit"} {
+		if g, _ := local[ev].([]any); len(g) != 1 {
+			t.Errorf("settings.local.json %s: %v", ev, local[ev])
+		}
+	}
+	// Re-run: nothing to change.
+	if r := runInit(t, "--project", p, "--bin", "/new/standin"); !strings.Contains(r.out, "Nothing to change") {
+		t.Errorf("second run changed something:\n%s", r.out)
+	}
+}
+
+// A settings.json with no standin hooks is not touched, not even reformatted.
+func TestInitLeavesSharedAlone(t *testing.T) {
+	fakeClaude(t, "2.1.300", true, nil)
+	p := newProject(t)
+	os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
+	body := "{\"model\":   \"x\", \"hooks\": {\"Stop\": []}}"
+	shared := filepath.Join(p, ".claude", "settings.json")
+	os.WriteFile(shared, []byte(body), 0o644)
+	if r := runInit(t, "--project", p, "--bin", "/x/standin"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	if b, _ := os.ReadFile(shared); string(b) != body {
+		t.Errorf("settings.json changed: %q", b)
+	}
+}
+
+// --shared writes settings.json and takes standin's hooks out of the local file.
+func TestInitSharedMovesBack(t *testing.T) {
+	fakeClaude(t, "2.1.300", true, nil)
+	p := newProject(t)
+	if r := runInit(t, "--project", p, "--bin", "/x/standin"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	if r := runInit(t, "--project", p, "--bin", "/x/standin", "--shared"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	if h := hookEvents(t, filepath.Join(p, ".claude", "settings.json")); len(h) != 3 {
+		t.Errorf("settings.json hooks: %v", h)
+	}
+	if h := hookEvents(t, filepath.Join(p, ".claude", "settings.local.json")); len(h) != 0 {
+		t.Errorf("settings.local.json still has standin hooks: %v", h)
+	}
+}
+
+// --no-prompt-guard leaves out UserPromptSubmit, and takes out one written before.
+func TestInitNoPromptGuard(t *testing.T) {
+	fakeClaude(t, "2.1.300", true, nil)
+	p := newProject(t)
+	local := filepath.Join(p, ".claude", "settings.local.json")
+	if r := runInit(t, "--project", p, "--bin", "/x/standin"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	if _, ok := hookEvents(t, local)["UserPromptSubmit"]; !ok {
+		t.Fatal("the prompt guard should be on by default")
+	}
+	r := runInit(t, "--project", p, "--bin", "/x/standin", "--no-prompt-guard")
+	if r.code != 0 || !strings.Contains(r.out, "prompt guard is off") {
+		t.Fatalf("%+v", r)
+	}
+	h := hookEvents(t, local)
+	if _, ok := h["UserPromptSubmit"]; ok {
+		t.Errorf("UserPromptSubmit still there: %v", h)
+	}
+	if _, ok := h["PreToolUse"]; !ok {
+		t.Error("PreToolUse lost")
+	}
+	if r := runInit(t, "--project", p, "--bin", "/x/standin", "--no-prompt-guard"); !strings.Contains(r.out, "Nothing to change") {
+		t.Errorf("re-run changed something:\n%s", r.out)
 	}
 }

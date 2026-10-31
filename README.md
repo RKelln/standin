@@ -42,15 +42,38 @@ standin approve              # you say yes to each column the AI will see for re
 standin scrub                # writes scrubbed/ for the AI; the mapping goes to ~/.standin
 # the AI works on scrubbed/ and writes its answer with stand-ins
 standin restore answer.md    # puts the real values back, into restored/, for you
+standin show PERSON_9        # prints who a stand-in is, on your screen only
 ```
 
-- **Default-deny:** every value becomes a stand-in unless you approved `keep` for its column.
+- **Default-deny:** every value becomes a stand-in unless you approved `keep` for its column. If the
+  config has a `keep` or `scan` that you have not approved, `scrub` stops and writes nothing.
 - **Fail closed:** if Standin cannot read a file, or is unsure, it writes nothing and says why.
 - **The mapping is the secret.** It lives outside the project folder. Never give it to an AI.
 - `standin check FILE` looks for real values and private patterns, and names the stand-in, never the value.
 - `standin report` prints an issue report with no data in it. Agents should use it to report problems.
+- `standin show PERSON_9` (or `[PERSON_9]`) prints the real value behind a stand-in. It prints only to your
+  screen, never to a pipe or an AI tool, and the guard hooks stop an AI from running it.
 
 Files in: CSV, TSV and JSON (UTF-8, UTF-16, Windows-1252). Not yet: Excel, OFX/QFX, PDF. Save as CSV first.
+
+### The guard hooks (Claude Code)
+
+`standin init` adds hooks and deny rules to `.claude/settings.local.json`: settings for this computer
+only. They hold this computer's path to the `standin` program. If the folder is in git, add that file to
+`.gitignore`. Use `standin init --shared` to write `.claude/settings.json` instead (shared with anyone
+who gets the folder). Running `init` again moves standin's own hooks out of the other file, and leaves
+the rest of it alone.
+
+- **Before each tool call**, the hook blocks reads of `raw/`, `restored/` and the mapping, and hands the
+  AI the scrubbed copy of a raw file when there is an up-to-date one.
+- **After each tool call**, it warns the AI if the output may hold a real value.
+- **The prompt guard** stops a chat message that holds a real value Standin knows (a name from a
+  tokenized column, say) from being typed or pasted into the chat. If you talk about your own records
+  with the AI on purpose, turn it off with `standin init --no-prompt-guard`. It only catches whole
+  values it knows: a first name alone gets through.
+- The hooks find the project folder themselves, so a moved folder keeps working. The mapping is kept
+  by the folder's full path, so after a move Standin tells you where the old private folder is and
+  where to move it. It does not move it for you.
 
 ## What it misses
 
