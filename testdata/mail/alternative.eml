@@ -1,0 +1,22 @@
+From: Ines Vantwerp <ines.vantwerp@example.com>
+To: shop@example.com
+Date: Thu, 03 Sep 2026 08:02:00 -0400
+Subject: chain on Thursday
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="----standin-alt-0001"
+
+------standin-alt-0001
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Hello,
+
+Can you fit a new chain on Thursday? Kofi Mensavi will drop it off.
+
+Ines Vantwerp
+
+------standin-alt-0001
+Content-Type: text/html; charset=utf-8
+
+<html><head><style>p{font-family:Arial}</style></head><body><p>Hello,</p><p>Can you fit a new chain on Thursday? <b>Kofi Mensavi</b> will drop it off.</p><p><a href="https://example.com/track/abc123">Ines Vantwerp</a></p></body></html>
+------standin-alt-0001--

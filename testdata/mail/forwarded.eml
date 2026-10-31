@@ -1,0 +1,25 @@
+From: shop@example.com
+To: bookkeeper@example.com
+Cc: owner@example.com
+Date: Mon, 07 Sep 2026 11:00:00 -0400
+Subject: Fwd: late payment
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="----standin-fwd-0003"
+
+------standin-fwd-0003
+Content-Type: text/plain; charset=utf-8
+
+Can you look at this?
+
+------standin-fwd-0003
+Content-Type: message/rfc822
+
+From: Nkemdi Ellingworth <nkemdi.ellingworth@example.com>
+To: shop@example.com
+Date: Sun, 06 Sep 2026 20:10:00 -0400
+Subject: late payment
+Content-Type: text/plain; charset=utf-8
+
+Sorry, the cheque goes out Monday. Bolat Zarnowski has the details.
+
+------standin-fwd-0003--

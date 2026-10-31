@@ -46,6 +46,7 @@ type Dataset struct {
 	Rows      int        // rows, records, or lines of a text file
 	Source    []string   // text files: per column, FromField or "table N"
 	Tables    int        // text files: how many Markdown tables
+	Email     *EmailInfo // .eml files: what the message held
 
 	comma   rune
 	header  []string
@@ -66,6 +67,11 @@ func KindFor(path string) (string, error) {
 		return JSON, nil
 	case ".md", ".markdown", ".txt":
 		return Text, nil
+	case ".eml":
+		// One message per file; Load turns it into text. Restore treats it as text.
+		return Text, nil
+	case ".mbox", ".msg":
+		return "", fail.New("unsupported", "I cannot read a mailbox file that holds several messages. Save each message as its own .eml file, or paste the messages into a .md file, then try again.")
 	case ".pdf":
 		return "", fail.New("unsupported", "I cannot read PDF files. "+RefuseHint)
 	case ".xlsx", ".xls", ".xlsm", ".ods", ".numbers":
@@ -88,11 +94,29 @@ func Load(path string) (*Dataset, error) {
 	if err != nil {
 		return nil, fail.New("read", "I could not read the file (%s).", fail.Reason(err))
 	}
+	if strings.ToLower(filepath.Ext(path)) == ".eml" {
+		return loadEmail(b)
+	}
 	d, err := Parse(kind, b)
 	if err == nil && kind == Text && strings.ToLower(filepath.Ext(path)) == ".txt" && looksLikeTable(textOf(d)) {
 		return nil, fail.New("txt-table", "This .txt file looks like a table (the same number of commas or tabs on every line). Rename it to .csv (commas) or .tsv (tabs), then try again.")
 	}
 	return d, err
+}
+
+// loadEmail turns one message into the text form everything else works on.
+// The scrubbed copy is that text, not the original message file (decision 68).
+func loadEmail(b []byte) (*Dataset, error) {
+	rendered, info, err := RenderEmail(b)
+	if err != nil {
+		return nil, err
+	}
+	d, err := Parse(Text, []byte(rendered))
+	if err != nil {
+		return nil, err
+	}
+	d.Email = info
+	return d, nil
 }
 
 func textOf(d *Dataset) string {
@@ -217,6 +241,9 @@ func parseCSV(text string, comma rune) (*Dataset, error) {
 	if len(recs) == 0 {
 		return nil, fail.New("empty", "This file is empty.")
 	}
+	if err := uniqueHeaders(recs[0], "The header line"); err != nil {
+		return nil, err
+	}
 	d := &Dataset{comma: comma, header: recs[0], records: recs[1:], Rows: len(recs) - 1}
 	d.Columns = append([]string(nil), recs[0]...)
 	d.Values = make([][]string, len(d.Columns))
@@ -228,6 +255,18 @@ func parseCSV(text string, comma rune) (*Dataset, error) {
 		}
 	}
 	return d, nil
+}
+
+// uniqueHeaders refuses ambiguous names without repeating a possibly private header.
+func uniqueHeaders(headers []string, where string) error {
+	seen := map[string]int{}
+	for i, header := range headers {
+		if first, ok := seen[header]; ok {
+			return fail.New("duplicate-header", "%s has the same header in columns %d and %d. Rename one so each column has its own name, then try again.", where, first+1, i+1)
+		}
+		seen[header] = i
+	}
+	return nil
 }
 
 // Rewriter says how to change a file.
@@ -249,7 +288,7 @@ func (d *Dataset) Write(rw Rewriter) ([]byte, error) {
 		return d.writeJSON(rw)
 	}
 	if d.Kind == Text {
-		return d.writeText(rw), nil
+		return d.writeText(rw)
 	}
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
@@ -257,6 +296,9 @@ func (d *Dataset) Write(rw Rewriter) ([]byte, error) {
 	h := make([]string, len(d.header))
 	for i, name := range d.header {
 		h[i] = rw.Name(name)
+	}
+	if err := uniqueHeaders(h, "The output header line"); err != nil {
+		return nil, err
 	}
 	if err := w.Write(h); err != nil {
 		return nil, fail.New("write", "I could not build the new file.")

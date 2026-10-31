@@ -48,10 +48,29 @@ func TextMarkdown(d *dataset.Dataset, shownPath, version string, tc TextCounts) 
 			fields = append(fields, c)
 		}
 	}
-	b.WriteString("- Kind: free text (Markdown or plain text)\n")
+	if d.Email != nil {
+		b.WriteString("- Kind: email message (one message, turned into plain text)\n")
+	} else {
+		b.WriteString("- Kind: free text (Markdown or plain text)\n")
+	}
 	fmt.Fprintf(&b, "- Text encoding: %s\n", d.Encoding)
+	if d.Email != nil {
+		fmt.Fprintf(&b, "- MIME parts read: %d\n", d.Email.Parts)
+		if d.Email.Attachments > 0 {
+			fmt.Fprintf(&b, "- Attachments not read: %d\n", d.Email.Attachments)
+		}
+		if d.Email.FromHTML {
+			b.WriteString("- The text came from the HTML part of the message. Links and images were dropped.\n")
+		}
+		b.WriteString("- The scrubbed copy is a plain-text view: the original message file, its formatting and any attachment are not kept.\n")
+	}
 	fmt.Fprintf(&b, "- Fields (`Label: value` lines): %d different labels\n", len(fields))
 	fmt.Fprintf(&b, "- Markdown tables: %d\n\n", d.Tables)
+	if d.Email != nil {
+		b.WriteString("## Usual rules for a message\n\n" +
+			"`From`, `To` and `Cc` tokenize (`PERSON`, `EMAIL`); `Subject` scan; `Date` keep; `text` words.\n" +
+			"`From` often holds both a name and an address; `scan` swaps the address and any name Standin knows.\n\n")
+	}
 
 	if len(fields) > 0 {
 		b.WriteString("## Fields\n\n")
@@ -144,4 +163,4 @@ const TextConfigHelp = "## How to write the config for a text file\n\n" +
 	"  ]\n" +
 	"}\n" +
 	"```\n\n" +
-	"`match` is a pattern for file paths in the project, like `raw/*.md` or `raw/**/*.txt`. The first rule that matches a file is used.\n"
+	"`match` is a pattern for file paths in the project, like `raw/*.md` or `raw/**/*.txt`. Use `raw/**/*.eml` for email: each `.eml` file holds one message, with `From`, `To`, `Cc`, `Date` and `Subject` as fields and the body as free text. The first rule that matches a file is used.\n"

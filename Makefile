@@ -29,6 +29,12 @@ lint:
 	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; \
 	else echo "golangci-lint not installed; skipping lint"; fi
 
+# go.mod and go.sum must match the source, so a dependency cannot drift in
+# unnoticed. Go does the pinning and the hashing; there is no list to keep.
+tidy-check:
+	@go mod tidy -diff >/dev/null || { echo "go.mod/go.sum are out of date:"; go mod tidy -diff; exit 1; }
+	@echo "tidy-check: OK"
+
 # Fails if the standin binary links any network package.
 no-network:
 	@deps="$$(go list -deps ./cmd/standin)" || { echo "no-network: go list failed; cannot check"; exit 1; }; \
@@ -36,7 +42,7 @@ no-network:
 	if [ -n "$$bad" ]; then echo "standin links network packages:"; echo "$$bad"; exit 1; fi; \
 	echo "no-network: OK"
 
-ci: fmt-check vet test no-network lint build
+ci: fmt-check vet test no-network tidy-check lint build
 
 # Builds every platform into dist/ without publishing. Needs goreleaser.
 release-snapshot:

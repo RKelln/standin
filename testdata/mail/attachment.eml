@@ -1,0 +1,19 @@
+From: Saoirse Brannagh <saoirse.brannagh@example.com>
+To: shop@example.com
+Date: Sun, 06 Sep 2026 15:45:00 -0400
+Subject: receipt attached
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="----standin-mix-0002"
+
+------standin-mix-0002
+Content-Type: text/plain; charset=utf-8
+
+Here is the receipt you asked for.
+
+------standin-mix-0002
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: attachment; filename="receipt-2041.txt"
+
+ATTACHMENT BODY Zelda Quorn 416-555-0144
+
+------standin-mix-0002--

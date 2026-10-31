@@ -194,6 +194,13 @@ func parseText(text string) (*Dataset, error) {
 		if hasPipe(l.raw) && i+1 < len(d.lines) && sepRe.MatchString(d.lines[i+1].raw) && hasPipe(d.lines[i+1].raw) {
 			head := cellSpans(l.raw)
 			if len(cellSpans(d.lines[i+1].raw)) == len(head) {
+				var headers []string
+				for _, sp := range head {
+					headers = append(headers, l.raw[sp[0]:sp[1]])
+				}
+				if err := uniqueHeaders(headers, "The table on line "+strconv.Itoa(i+1)); err != nil {
+					return nil, err
+				}
 				d.Tables++
 				t := strconv.Itoa(d.Tables)
 				l.kind, l.spans = lineTableHead, head
@@ -269,7 +276,7 @@ func (d *Dataset) TableHeaders(t int) []string {
 	return out
 }
 
-func (d *Dataset) writeText(rw Rewriter) []byte {
+func (d *Dataset) writeText(rw Rewriter) ([]byte, error) {
 	var b strings.Builder
 	for i, l := range d.lines {
 		out := l.raw
@@ -286,21 +293,28 @@ func (d *Dataset) writeText(rw Rewriter) []byte {
 		case lineTableHead, lineTableRow:
 			out = ""
 			last := 0
+			var headers []string
 			for k, sp := range l.spans {
 				v := l.raw[sp[0]:sp[1]]
 				nv := v
 				if l.kind == lineTableHead {
 					nv = rw.Name(v)
+					headers = append(headers, nv)
 				} else if x, changed := rw.Cell(l.cols[k], v); changed {
 					nv = x
 				}
 				out += l.raw[last:sp[0]] + nv
 				last = sp[1]
 			}
+			if l.kind == lineTableHead {
+				if err := uniqueHeaders(headers, "The output table on line "+strconv.Itoa(i+1)); err != nil {
+					return nil, err
+				}
+			}
 			out += l.raw[last:]
 		}
 		b.WriteString(out)
 		b.WriteString(l.eol)
 	}
-	return []byte(b.String())
+	return []byte(b.String()), nil
 }

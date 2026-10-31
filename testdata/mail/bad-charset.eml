@@ -1,0 +1,7 @@
+From: Bolat Zarnowski <bolat.zarnowski@example.com>
+To: shop@example.com
+Date: Tue, 08 Sep 2026 10:00:00 -0400
+Subject: test
+Content-Type: text/plain; charset=x-not-a-charset
+
+‚ ‚¢ in a character set nobody writes.

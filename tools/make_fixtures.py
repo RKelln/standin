@@ -419,7 +419,192 @@ def build() -> dict[str, bytes]:
         + "".join(v + "\n" for v in gaps)
     ).encode("utf-8")
     files.update(build_text())
+    files.update(build_mail())
     return files
+
+
+# ---- email (.eml) ------------------------------------------------------------
+# One message per file, in the shape a mail program exports: header lines, MIME
+# parts, transfer encodings. All invented, example.com addresses, 555-01xx numbers.
+
+
+def build_mail() -> dict[str, bytes]:
+    import base64
+    import quopri
+
+    out: dict[str, bytes] = {}
+    crlf = lambda s: s.replace("\n", "\r\n").encode("utf-8")
+
+    # 1. One part, quoted-printable, an encoded Subject, CRLF line endings.
+    body = (
+        "Hi Sam,\n\n"
+        "The blue bike is ready whenever you are. My number is 416-555-0143\n"
+        "if you need to reach me before Friday.\n\n"
+        "Thanks,\n"
+        "Oksana Drozdenko\n"
+    )
+    out["mail/simple.eml"] = crlf(
+        "From: Oksana Drozdenko <oksana.drozdenko@example.com>\n"
+        "To: shop@example.com\n"
+        "Date: Wed, 02 Sep 2026 10:14:00 -0400\n"
+        "Subject: =?UTF-8?Q?Re=3A_tune=2Dup_for_the_blue_bike?=\n"
+        "Message-ID: <20260902101400.1@example.com>\n"
+        "MIME-Version: 1.0\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "Content-Transfer-Encoding: quoted-printable\n"
+        "\n"
+        + quopri.encodestring(body.encode("utf-8")).decode("ascii")
+    )
+
+    # 2. multipart/alternative: the plain text is preferred; the HTML copy is
+    #    ignored, and it holds a name that must not appear twice.
+    alt_plain = (
+        "Hello,\n\n"
+        "Can you fit a new chain on Thursday? Kofi Mensavi will drop it off.\n\n"
+        "Ines Vantwerp\n"
+    )
+    alt_html = (
+        "<html><head><style>p{font-family:Arial}</style></head><body>"
+        "<p>Hello,</p><p>Can you fit a new chain on Thursday? "
+        "<b>Kofi Mensavi</b> will drop it off.</p>"
+        '<p><a href="https://example.com/track/abc123">Ines Vantwerp</a></p>'
+        "</body></html>"
+    )
+    boundary = "----standin-alt-0001"
+    out["mail/alternative.eml"] = crlf(
+        "From: Ines Vantwerp <ines.vantwerp@example.com>\n"
+        "To: shop@example.com\n"
+        "Date: Thu, 03 Sep 2026 08:02:00 -0400\n"
+        "Subject: chain on Thursday\n"
+        "MIME-Version: 1.0\n"
+        f'Content-Type: multipart/alternative; boundary="{boundary}"\n'
+        "\n"
+        f"--{boundary}\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "Content-Transfer-Encoding: quoted-printable\n"
+        "\n"
+        + quopri.encodestring(alt_plain.encode("utf-8")).decode("ascii")
+        + f"\n--{boundary}\n"
+        "Content-Type: text/html; charset=utf-8\n"
+        "\n" + alt_html + "\n"
+        f"--{boundary}--\n"
+    )
+
+    # 3. HTML only: the text comes from the HTML part.
+    out["mail/html-only.eml"] = crlf(
+        "From: Quillfeather Bikes <hello@quillfeather.example.org>\n"
+        "To: shop@example.com\n"
+        "Date: Fri, 04 Sep 2026 12:00:00 -0400\n"
+        "Subject: September sale\n"
+        "MIME-Version: 1.0\n"
+        "Content-Type: text/html; charset=utf-8\n"
+        "\n"
+        "<html><head><style>.x{color:red}</style><script>var t=1;</script></head><body>"
+        "<p>Hi Tavish,</p><p>Pads are 15&amp; off this week.<br>Ask for Yaretzi.</p>"
+        "</body></html>\n"
+    )
+
+    # 4. base64 body with a non-ASCII name.
+    b64_body = (
+        "Bonjour,\n\n"
+        "Je passe mardi. Demandez Farida Okorafor au comptoir.\n\n"
+        "Merci,\n"
+        "Noémie Côté\n"
+    ).encode("utf-8")
+    out["mail/base64.eml"] = crlf(
+        "From: Noemie Cote <noemie.cote@example.com>\n"
+        "To: shop@example.com\n"
+        "Date: Sat, 05 Sep 2026 09:30:00 -0400\n"
+        "Subject: mardi\n"
+        "MIME-Version: 1.0\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "Content-Transfer-Encoding: base64\n"
+        "\n"
+        + base64.encodebytes(b64_body).decode("ascii")
+    )
+
+    # 5. multipart/mixed: the text body, then an attachment that must not be read.
+    mixed = "----standin-mix-0002"
+    out["mail/attachment.eml"] = crlf(
+        "From: Saoirse Brannagh <saoirse.brannagh@example.com>\n"
+        "To: shop@example.com\n"
+        "Date: Sun, 06 Sep 2026 15:45:00 -0400\n"
+        "Subject: receipt attached\n"
+        "MIME-Version: 1.0\n"
+        f'Content-Type: multipart/mixed; boundary="{mixed}"\n'
+        "\n"
+        f"--{mixed}\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Here is the receipt you asked for.\n"
+        f"\n--{mixed}\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        'Content-Disposition: attachment; filename="receipt-2041.txt"\n'
+        "\n"
+        "ATTACHMENT BODY Zelda Quorn 416-555-0144\n"
+        f"\n--{mixed}--\n"
+    )
+
+    # 6. A forwarded message inside the message.
+    fwd = "----standin-fwd-0003"
+    out["mail/forwarded.eml"] = crlf(
+        "From: shop@example.com\n"
+        "To: bookkeeper@example.com\n"
+        "Cc: owner@example.com\n"
+        "Date: Mon, 07 Sep 2026 11:00:00 -0400\n"
+        "Subject: Fwd: late payment\n"
+        "MIME-Version: 1.0\n"
+        f'Content-Type: multipart/mixed; boundary="{fwd}"\n'
+        "\n"
+        f"--{fwd}\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Can you look at this?\n"
+        f"\n--{fwd}\n"
+        "Content-Type: message/rfc822\n"
+        "\n"
+        "From: Nkemdi Ellingworth <nkemdi.ellingworth@example.com>\n"
+        "To: shop@example.com\n"
+        "Date: Sun, 06 Sep 2026 20:10:00 -0400\n"
+        "Subject: late payment\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Sorry, the cheque goes out Monday. Bolat Zarnowski has the details.\n"
+        f"\n--{fwd}--\n"
+    )
+
+    # 7. A character set no mail program writes, and an mbox file: both refused.
+    out["mail/bad-charset.eml"] = (
+        b"From: Bolat Zarnowski <bolat.zarnowski@example.com>\n"
+        b"To: shop@example.com\n"
+        b"Date: Tue, 08 Sep 2026 10:00:00 -0400\n"
+        b"Subject: test\n"
+        b"Content-Type: text/plain; charset=x-not-a-charset\n"
+        b"\n"
+        b"\x82\xa0\x82\xa2 in a character set nobody writes.\n"
+    )
+
+    # 8. A real character set (KOI8-R), decoded to UTF-8 rather than refused.
+    # Cyrillic has capital letters, so the word check still applies.
+    _ru_body = "Здравствуйте. Велосипед готов, заберите в четверг.\n\nИван Петров\n"
+    _ru_subj = base64.b64encode("Велосипед готов".encode("koi8-r")).decode("ascii")
+    out["mail/koi8r.eml"] = (
+        "From: Ivan Petrov <ivan.petrov@example.com>\n"
+        "To: shop@example.com\n"
+        "Date: Wed, 09 Sep 2026 09:00:00 -0400\n"
+        f"Subject: =?KOI8-R?B?{_ru_subj}?=\n"
+        "Content-Type: text/plain; charset=koi8-r\n"
+        "\n"
+    ).encode("ascii") + _ru_body.encode("koi8-r")
+
+    out["mail/mbox.eml"] = (
+        b"From shop@example.com Wed Sep  2 10:14:00 2026\n"
+        b"From: Oksana Drozdenko <oksana.drozdenko@example.com>\n"
+        b"Subject: one of several\n"
+        b"\n"
+        b"Body of the first message.\n"
+    )
+    return out
 
 
 # ---- free text (.md, .txt) ---------------------------------------------------
@@ -548,7 +733,9 @@ def main() -> int:
         return 1 if bad else 0
     OUT.mkdir(exist_ok=True)
     for name, body in files.items():
-        (OUT / name).write_bytes(body)
+        path = OUT / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
     print(f"wrote {len(files)} files to {OUT.relative_to(ROOT)}/")
     return 0
 

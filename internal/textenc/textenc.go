@@ -7,8 +7,13 @@ package textenc
 
 import (
 	"bytes"
+	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"golang.org/x/text/encoding/htmlindex"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
 
 	"github.com/RKelln/standin/internal/fail"
 )
@@ -129,6 +134,54 @@ func trimBOM(s string) string {
 		return s[3:]
 	}
 	return s
+}
+
+// DecodeCharset turns the bytes of a message part into text, using the
+// character set the message names. Bytes that are already valid UTF-8 are used
+// as they are: a wrong Latin-1 label is common, and guessing otherwise would
+// change a name. ISO-8859-1 and Windows-1252 are decoded here; any other
+// character set is refused rather than guessed.
+func DecodeCharset(b []byte, charset string) (string, error) {
+	name := strings.ToLower(strings.Trim(strings.TrimSpace(charset), `"'`))
+	switch name {
+	case "", "utf-8", "utf8", "us-ascii", "ascii", "iso-8859-1", "iso8859-1", "iso-8859-15",
+		"latin1", "latin-1", "latin9", "windows-1252", "cp1252":
+		// These labels are often wrong in old mail, and the bytes are the
+		// truth: valid UTF-8 is taken as UTF-8, anything else as Windows-1252.
+		if utf8.Valid(b) {
+			return checkText(string(b))
+		}
+		t, ok := decode1252(b)
+		if !ok {
+			return "", fail.New("bad-charset", "The text of this message does not fit the character set it names. Save the message again as UTF-8, then try again.")
+		}
+		return checkText(t)
+	}
+	// Any other name is honored, not guessed at. IANA names first, because
+	// that is what mail headers use ("iso-2022-jp", "shift_jis", "gb2312",
+	// "koi8-r"); then the HTML aliases ("sjis", "cp936"). Both are table
+	// lookups: no network, no parser (decision 74).
+	enc, err := ianaindex.MIME.Encoding(name)
+	if err != nil || enc == nil {
+		enc, err = htmlindex.Get(name)
+	}
+	if err != nil || enc == nil {
+		return "", fail.New("bad-charset", "This message is written in %s, a character set I cannot read. Save the message again as UTF-8, then try again.", charset)
+	}
+	out, _, err := transform.Bytes(enc.NewDecoder(), b)
+	if err != nil {
+		return "", fail.New("bad-charset", "The text of this message does not fit the character set it names (%s). Save the message again as UTF-8, then try again.", charset)
+	}
+	return checkText(string(out))
+}
+
+// checkText refuses a decoded part that still holds control bytes: that is
+// how a wrongly decoded binary body shows itself.
+func checkText(t string) (string, error) {
+	if hasControl(t) {
+		return "", fail.New("not-text", "This part of the message holds bytes that are not text.")
+	}
+	return t, nil
 }
 
 func decode1252(b []byte) (string, bool) {
