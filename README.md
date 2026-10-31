@@ -109,6 +109,7 @@ the rest of it alone.
 - **First names in text and full names in columns are not linked.** "Leila" in an email becomes
   `[NAME_3]`, while "Leila Haddad" in a column is `[PERSON_1]`. The AI cannot tell they are the same
   person. Linking them would also merge two different Leilas, so Standin does not.
+- **"It's May" about a person** is read as the month. Names after "Hi", "Dear" or "name is" are still caught.
 - **Headers:** a column header that is a first name and also a common word (Grace, Rose) still shows
   in the shape file.
 - **Patterns:** stand-ins still show which rows share a value, and how often.

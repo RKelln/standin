@@ -459,3 +459,8 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     smaller count was right: the person had kept words at approve. Shape still writes one file per
     raw file; grouping files that look alike is not done (the per-file counts differ, and a merged
     file hides which file a count came from).
+58. **A day or month name that is also a first name (Friday, May, June) stays in the calendar group**
+    unless it is in a name spot (after Hi/Dear, a title, `name is`, a sign-off, next to a caught
+    name). Before, the English-word test sent it to the first-name rule. "It's", "this is" and "c'est"
+    no longer count as a name spot for these words ("It's Friday."). Cost: "It's May" about a person
+    is missed.

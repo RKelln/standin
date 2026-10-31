@@ -62,6 +62,9 @@ var (
 	wordRe   = regexp.MustCompile(`\pL[\pL\pM]*(?:['’-]\pL[\pL\pM]*)*`)
 	mdLead   = regexp.MustCompile(`^\s*(?:(?:[#>*+|-]+|\d+[.)]|\[[ xX]\])\s*)*`)
 	nameIntr = regexp.MustCompile(`(?i)(?:\bname is|\bname:|\bnom\s*:|je m'appelle|\bthis is|c'est|it's|\bsigned|\bcontact:|\bclient:|\bcaller:)\s*$`)
+	// "it's Friday" is a day far more often than a name: for a day or month
+	// name these three do not make a name spot.
+	weakIntr = regexp.MustCompile(`(?i)(?:\bthis is|c'est|it's)\s*$`)
 	closing  = regexp.MustCompile(`(?i)^\s*(?:thanks|thank you|thx|cheers|regards|best|best regards|kind regards|sincerely|take care|` +
 		`merci|merci beaucoup|cordialement|bien à vous|à bientôt|salutations|bonne journée)[^\pL\pN]*$`)
 	dashSign = regexp.MustCompile(`^\s*(?:--|—)\s*\pL[\pL\pM]*\s*$`)
@@ -268,7 +271,7 @@ func (f *Finder) addLine(line, prevLine string) {
 		if cpt && !noise[lw] && !(calendar[k] && (prevw == "from" || prevw == "by" || prevw == "with" || prevw == "per")) {
 			spot := (greet[prevw] && (between == "" || between == ",")) ||
 				(titles[prevw] && (between == "" || between == ".")) ||
-				nameIntr.MatchString(before)
+				(nameIntr.MatchString(before) && !(calendar[k] && weakIntr.MatchString(before)))
 			if spot {
 				f.add(w, NameSpot, line, a, b, counted)
 				hit = true
@@ -283,7 +286,7 @@ func (f *Finder) addLine(line, prevLine string) {
 		case cpt && f.parts[k]:
 			f.add(w, FieldPart, line, a, b, counted)
 			hit = true
-		case cpt && !InDict(w):
+		case cpt && (!InDict(w) || calendar[k]):
 			if calendar[k] {
 				f.add(w, Calendar, line, a, b, counted)
 				calAt[i] = true

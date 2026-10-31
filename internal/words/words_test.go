@@ -93,6 +93,12 @@ func TestFinderRules(t *testing.T) {
 		{"Meet June Fairbanks-Ndlovu at noon.", "June", NextToName | Calendar, GroupNameLike},
 		{"Ana Okonkwo June", "June", NextToName | Calendar, GroupNameLike},
 		{"Open on Monday at noon.", "Monday", Calendar, GroupCalendar},
+		// Days and months that are also first names stay in the calendar group
+		// unless they sit in a name spot.
+		{"Tue, Wed, Friday, Saturday 10am to 6pm.", "Friday", Calendar, GroupCalendar},
+		{"You said Thursday. It's Friday. Is it done?", "Friday", Calendar, GroupCalendar},
+		{"We open in April and May.", "May", Calendar, GroupCalendar},
+		{"Hi May, see you soon.", "May", NameSpot | Calendar, GroupNameLike},
 	}
 	for _, c := range cases {
 		f := find(c.text)
