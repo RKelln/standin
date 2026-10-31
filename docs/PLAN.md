@@ -1,7 +1,8 @@
-# Standin: build plan (2026-10-30)
+# Standin: implementation contract (updated 2026-10-31)
 
-Goal: a Go CLI, good enough on synthetic data by the Get2Know workshop (2026-11-02), and useful to an
-owner at home. Hooks call it; a person runs setup once with help from their agent.
+Goal: a Go CLI, useful to an owner at home and tested on synthetic data. Hooks call it; a person runs
+setup once with help from their agent. This file is the current contract; the original track tables
+and schedule at the end are build history.
 
 ## Shape of the work
 
@@ -20,8 +21,9 @@ Agents do not commit; the orchestrator reviews and commits.
 
 ### Rules
 
-- Go, standard library only. Module `github.com/RKelln/standin`, main in `./cmd/standin`,
-  `var version, commit string` in `main` (set by ldflags).
+- Go, one static binary: the standard library, plus one pinned and vendored module for character
+  sets (`golang.org/x/text`, BSD-3-Clause). Module `github.com/RKelln/standin`, main in
+  `./cmd/standin`, `var version, commit string` in `main` (set by ldflags).
 - No package that can open a network connection is linked (`net`, `net/http`, `net/rpc`, `crypto/tls`...).
   A test checks `go list -deps ./cmd/standin`.
 - Fail closed: on any parse error or doubt, write no output file and say why. Exit 2.
@@ -33,7 +35,9 @@ Agents do not commit; the orchestrator reviews and commits.
 
 ### Exit codes
 
-`0` done. `1` done, with warnings or findings (see output). `2` refused or error; nothing written.
+`0` done. `1` done, with warnings or findings (see output). `2` refused or error; read the reason.
+Bad input is refused before output files are written. A save failure may require recovery; it must
+not be described as an all-files atomic transaction.
 
 ### Project folder
 
@@ -49,15 +53,25 @@ Agents do not commit; the orchestrator reviews and commits.
 Private store (the secret), outside the project so tools working in the project do not see it:
 `$STANDIN_HOME/projects/<folder-name>-<first 8 hex of sha256(abs path)>/` with `mapping.json`,
 `approval.json` and (v0.2, free text) `words.json`. `STANDIN_HOME` defaults to `~/.standin`. `--private DIR` overrides. Created `0700`,
-files `0600`. Every command that uses it prints its path once.
+files `0600` on Unix. Windows uses a protected access list for the current Windows account; mode bits
+alone are not a privacy control there. Every command that uses it prints its path once.
+
+Private paths resolve existing aliases before checking they are outside the project. Output boundaries
+are real directories pinned with `os.Root`; linked roots or nested linked components are refused.
+All private-state writers take a cross-process lease before reading state and hold it through save.
+An abandoned `.standin-lock` is never taken over automatically. Private saves retain previous private
+files and `pending.json` during publication. Readers and hooks refuse unfinished saves. These checks
+cover interrupted processes and ordinary errors, not a proven power-loss recovery guarantee. Recover
+private state and scrubbed outputs from the same generation; never regenerate a missing mapping over
+existing scrubbed files.
 
 ### Commands
 
 ```
 standin shape  [--project DIR] FILE...        raw/x.csv -> shape/x.csv.shape.md
 standin review [--project DIR]                print the config as a plain table (keeps first)
-standin approve [--project DIR]               needs a terminal (stdin is a TTY); asks yes per `keep`
-                                              and per `scan` (and per word check and kept group);
+standin approve [--project DIR]               needs a terminal; asks yes per file rule's keep group
+                                              and scan group (and per word check and kept group);
                                               stores sha256 of the config in approval.json. With a
                                               word check: stdout must be a TTY too; shows new words
                                               to keep (v0.2, see "Free text")
@@ -85,15 +99,23 @@ has a word check. A config with no `keep`, no `scan` and no word check needs no 
 
 - CSV and TSV: delimiter by extension (`.csv` comma, `.tsv` tab). Strip UTF-8 BOM. Not
   valid UTF-8: decode as Windows-1252 only if the bytes fit it, and say so; UTF-16 with BOM decoded.
-  Ragged rows (field count differs from header): refuse with the line number.
+  Ragged rows (field count differs from header): refuse with the line number. Duplicate headers refuse.
 - JSON: an array of objects, or an object whose values are objects ("object of records": its keys are
   data, category `KEY`). Nested objects flatten to dotted paths (`address.city`); arrays of scalars or
-  objects inside a record use `[]` (`items[].name`). Anything else: refuse.
+  objects inside a record use `[]` (`items[].name`). Literal field keys cannot contain dots or brackets,
+  be blank/whitespace, or equal `(key)`: refuse instead of merging paths. Outer object-of-records keys
+  remain data. Empty containers are included in the key inventory. All keys, including empty-container
+  keys, are checked for hidden marks and pre-existing stand-ins. Anything else: refuse.
 - Free text (v0.2): `.md`, `.markdown` and `.txt`, same encodings. See "Free text" below. A `.txt` that
   parses as a CSV or TSV table (3+ rows, 2+ columns, all the same width) is refused: "rename it to .csv
   or .tsv".
+- Email (v0.3): one message per `.eml`, full RFC 822 as a mail program exports it. Read in
+  `internal/dataset/email.go`: `mime`, `mime/quotedprintable` and `encoding/base64` for the encodings,
+  `golang.org/x/text` for character sets, and our own walk over the MIME parts. `net/mail`,
+  `mime/multipart` and every third-party mail parser are not used, because all of them link `net`.
+  See "Email" below. `.mbox` and `.msg` are refused: they hold several messages.
 - Anything else (PDF, images, xlsx, docx, unknown): refuse, "Save it as CSV, or remove private details
-  by hand." Later: OFX/QFX, QuickBooks exports, xlsx, `.eml`/`.mbox` (hand-parsed: `net/mail` links `net`).
+  by hand." Later: OFX/QFX, QuickBooks exports, xlsx.
 
 ### Stand-ins
 
@@ -172,6 +194,10 @@ Strict: replaces every exact stand-in it knows, longest first, never fuzzy (`[PE
 known stand-ins it left alone because they sit in a link or a formula: in any text, inside `http://`,
 `https://`, `www.`, after `](`, `src=` or `href=`; in CSV/TSV, any cell starting `= + - @` (after
 trimming). Two inputs that would land on the same `restored/` name: refuse. Exit 1 if any finding.
+The assembled output is checked too: a substitution that creates a formula, URL or tag stays a
+stand-in with a warning. This reduces exposure; it is not general HTML sanitization. JSON input and
+output must have valid Unicode, no duplicate object keys, and exactly one complete value. CSV/TSV
+restore uses strict quoting and row widths. A fragment can be restored explicitly as `.txt`.
 
 ### Settled details (2026-10-30, from track C questions)
 
@@ -184,8 +210,8 @@ trimming). Two inputs that would land on the same `restored/` name: refuse. Exit
    A config with no `keep` and no `scan` needs no approval.
 4. Restore and check reports go to stderr; stdout carries only the restored text (for `-`). `restore -`
    refuses (exit 2) when stdout is not a terminal: restore is for the person, not the agent.
-5. `approve` asks `Keep <column> in <match>? ... Type yes:` per keep and `Scan <column> in <match>?
-   It is free text: names Standin does not know stay in ... Type yes:` per scan, then one final yes.
+5. `approve` lists every kept column in one question per file rule, and every scanned column in another,
+   then asks one final yes. Word checks and kept word groups are approved separately.
    `approval.json`: `{"version":1,"config_sha256":"...","approved_at":"RFC3339",
    "keeps":["<match>:<column>"],"scans":["<match>:<column>"]}`.
 6. The private folder hash uses the absolute path with symlinks resolved.
@@ -200,11 +226,20 @@ trimming). Two inputs that would land on the same `restored/` name: refuse. Exit
 12. Word boundaries in the scan are Unicode-aware (Go's `\b` is ASCII-only: `Renée` would be missed).
 13. CSV/TSV with lone carriage returns (old Mac line endings) is refused: "save it with normal line
     endings".
-14. Headers and JSON keys: shape and scrub use one check (`scan.LooksLikeDataName`: the whole name, then
+14. Headers and JSON keys: shape and scrub use one check (`scan.LooksLikeDataHeader`: the whole name, then
     each dot-separated part). Names caught: two capitalised words incl. `O'Brien`/`McNab`/hyphens, two
     all-caps words, two lower-case words (`lee_pip`), unless both are common header words; a common word
     followed by an uncommon capitalised word (`Bill Gatesby`). Scrub also swaps a header equal to a value
     already in the mapping.
+15. Filenames also get the single-word header check. Shape checks names against the batch's values in
+    memory; scrub checks against known tokenized/dropped values before printing preparation messages.
+    A flagged filename is hidden in shape output and refused by scrub. This is not complete name detection.
+16. Config and private JSON readers refuse duplicate fields, trailing values, malformed Unicode and
+    inconsistent private mapping rows, counter overflow and missing stand-in rows.
+17. Terminal checks use the OS terminal/console query. A pseudo-terminal is not proof of a person.
+18. Claude PreToolUse matches every tool. Supported file/shell tools are checked; conversation/task-list
+    tools are allowed; unknown tools (including unknown MCP tools) refuse. Hooks remain a safety net,
+    not an operating-system boundary. Init preflights destinations and reports late failures truthfully.
 
 ### Free text (v0.2, track F; DESIGN 38-44, research `docs/research/free-text.md`)
 
@@ -260,6 +295,33 @@ trimming). Two inputs that would land on the same `restored/` name: refuse. Exit
   Hooks guard the whole `$STANDIN_HOME`; project discovery as in decision 52; two projects block.
 - **shape**: fields and table columns as column shapes; free text as count bands only (lines, unusual,
   name-like, calendar, pattern kinds). **review**: count bands only, plus new words since approve.
+
+### Email (v0.3, `internal/dataset/email.go`)
+
+A `.eml` file holds one message. Standin turns it into the plain-text form and then uses every rule
+above unchanged; there is no separate config language and no new command.
+
+- **Rendered form:** `From`, `To`, `Cc`, `Date`, `Subject` as `Label: value` lines, one `To`/`Cc` line
+  per address, then a blank line and the body. Header values are unfolded and RFC 2047 encoded words
+  (`=?UTF-8?Q?...?=`) are decoded. Other headers are not shown.
+- **Body:** the first `text/plain` parts are used, joined in order. If a message has no plain part, the
+  `text/html` parts are converted to text (styles, scripts, comments and tags dropped, entities
+  decoded, `<br>` and block ends become line breaks). Links and images are dropped.
+- **Encodings:** `base64`, `quoted-printable`, `7bit`, `8bit` and `binary`. Character sets: UTF-8,
+  US-ASCII and the ISO-8859-1/Windows-1252 family are read as before (valid UTF-8 wins over a wrong
+  label); every other name is decoded through `golang.org/x/text` (Shift-JIS, KOI8-R, GB2312,
+  ISO-2022-JP and the rest). A name nothing knows is refused rather than guessed at.
+- **Attachments:** counted and never opened. `multipart/*` recurses (depth 6, 200 parts);
+  `message/rfc822` is read as a forwarded message, with its own From/To/Date/Subject lines kept.
+- **Refusals (exit 2, nothing written):** an mbox file, no blank line between headers and body, a header
+  line that is not `Name: value`, a body part with no readable text, an unknown character set or
+  transfer encoding, broken base64, a multipart body with no boundary or no closing boundary.
+- **Checked against a mature reader, in the tests only.** `github.com/emersion/go-message` reads the
+  same fixtures in `internal/dataset/oracle_test.go` and the two readings must agree word for word. It
+  links `net`, so it is never linked into the program (DESIGN 75).
+- **The trimmed copy is a view.** `scrubbed/<name>.eml` is the rendered text, not the original message
+  file: MIME structure, formatting and attachments are not kept. `restore` writes the same view with the
+  real values back. `raw/` is never changed. The shape file says so.
 
 ## Order
 

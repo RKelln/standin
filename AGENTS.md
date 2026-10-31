@@ -16,7 +16,8 @@ that file. Nothing in it is sacred.
 ## Working rules
 
 - Plan in writing before building. Short plan, then build.
-- **The MVP is a CLI: one static Go binary, standard library only, no network access.** It is called
+- **The MVP is a CLI: one static Go binary, no network access, one vendored module for character
+  sets.** It is called
   mainly by agent-harness hooks; setup is hands-on. It must run on a locked-down laptop where `python3`,
   `node` and `git` are installer stubs and nothing can be installed: the binary ships in the install
   files (macOS arm64/amd64, Windows, Linux). (Ryan, 2026-10-30; replaces the earlier one-HTML-file rule.)

@@ -6,6 +6,38 @@ lists built in, for the word check on free text (`.md` and `.txt` files). They a
 prints them too. `tools/fetch_wordlists.py` makes the lists from their sources (dev time only; the
 program never uses the network).
 
+## Character-set tables: golang.org/x/text
+
+Vendored in `vendor/golang.org/x/text/` and linked into the binary. It turns a message's declared
+character set (Shift-JIS, KOI8-R, GB2312, ISO-2022-JP ...) into UTF-8. It is a table lookup: no network,
+no parser, and nothing it decodes leaves the machine. Why not a mail library: every Go mail parser links
+`net` (DESIGN 74). Licence: BSD-3-Clause.
+
+```
+Copyright 2009 The Go Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+```
+
+## Test-only mail parser: github.com/emersion/go-message
+
+Vendored in `vendor/github.com/emersion/go-message/` and compiled into the **test binary only**
+(`internal/dataset/oracle_test.go`). It is not linked into `standin`: it imports `net/textproto`, and
+the tool promises to carry no network code. The tests read every mail fixture with it and with our own
+reader, and require the two to agree word for word. Licence: MIT.
+
 ## English words: SCOWL / English Speller Database (ESDB)
 
 `internal/words/lists/english.txt.gz`. A word list generated at https://app.aspell.net/create from the

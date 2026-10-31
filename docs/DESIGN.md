@@ -1,7 +1,8 @@
 # Standin: design
 
-Status: first draft, 2026-10-30. A proposal for the working agent, not a decision record. The agent should
-check it, correct it, and record decisions in the "Decisions" section at the end.
+Status: design history and decisions, updated 2026-10-31. `docs/PLAN.md` is the current implementation
+contract. The initial proposal below supplies background; later numbered decisions record changes.
+The review and its fixes are tracked in `docs/REVIEW-2026-10-31.md` and `docs/REVIEW-FIXES-2026-10-31.md`.
 
 ## 1. Why
 
@@ -18,8 +19,7 @@ or sort emails, without exposing customer names, emails and account numbers.
 
 ## 2. Who it is for
 
-- A non-technical owner on a locked-down laptop (no installs, no admin, no Python or Node). Opens a file in
-  the browser.
+- A non-technical owner on a locked-down laptop (no admin, no Python or Node). Runs a supplied binary.
 - A person with an AI coding agent in a folder who wants a rule: "the agent reads `scrubbed/`, never
   `raw/`".
 - Not for people who need a compliance guarantee. It is an exposure reducer.
@@ -38,7 +38,7 @@ name-recognition models.
 match a payment to an invoice. A private table maps stand-ins back. A restore step swaps them in the AI's
 output.
 
-## 4. The flow
+## 4. Original browser flow (historical; replaced by CLI decisions below)
 
 1. **Load.** Drop a file on the page. Supported in the MVP: CSV, TSV, JSON (array of records, or object of
    records). Anything else: refuse and say "redact by hand".
@@ -122,16 +122,15 @@ Unsupported or unparseable input: no output, a clear message. No silent best eff
 
 The interface should say these in a short "What this does not do" panel.
 
-## 7. MVP
+## 7. MVP and current scope
 
-One HTML file, opened from a folder in a browser. No build, no network, no installs.
+One supplied Go CLI binary, no runtime network client or language runtime, one pinned and vendored
+module (`golang.org/x/text`, character sets).
+Includes CSV, TSV and JSON, shape output, config review and approval, scrub, private mapping storage,
+restore and refusal of unsupported files. Later work added Markdown/plain text word checks, Claude
+Code hooks and setup. The mapping is saved by an explicit scrub command, outside the project.
 
-Includes: CSV, TSV and JSON in; shape file out; config review table with default-deny; scrub; mapping
-save; before-and-after view; restore from pasted text or a loaded file; refuse unsupported files; a short
-"what this does not do" panel; a settings snippet for Claude Code.
-
-Excludes: name recognition models, PDF, images, Word, an agent hook, format-preserving stand-ins,
-accounts, anything hosted.
+Excludes name recognition models, PDF, images, Word, format-preserving stand-ins, accounts and hosting.
 
 ### Success checks
 
@@ -144,9 +143,10 @@ accounts, anything hosted.
 4. `Customer_1` and `Customer_12` restore correctly.
 5. A file with person names as headers is flagged.
 6. A PDF is refused with a clear message.
-7. The page makes no network requests (check in browser devtools and with a content security policy that
-   forbids them).
-8. Works opened from a plain folder in Chrome and Safari, with the browser offline.
+7. No network-capable Go package is linked into the CLI (dependency checks). Installers download the
+   release; setup's external `claude --version` command is outside this package check.
+8. Builds without cgo for macOS, Windows and Linux, arm64 and amd64. Native execution and installer
+   checks on each platform are separate evidence; a cross-build alone does not establish them.
 
 ## 8. Prior art (short pass, 2026-10-30; unverified claims marked)
 
@@ -197,7 +197,7 @@ is in `docs/PLAN.md`; where this file and PLAN differ, PLAN wins.)
 1. **A CLI, not an HTML page** (Ryan, 2026-10-30). Agent harnesses call it from hooks; setup is hands-on.
    Sections 4, 7 and success checks 7-8 describe the old page; the CLI keeps the same flow (shape, config,
    approve, scrub, restore). Check 7 becomes "no network package is linked" (a test on `go list -deps`).
-2. **Go, standard library only, one static binary.** Easy cross-builds for macOS, Windows and Linux; no
+2. **Go, one static binary.** Easy cross-builds for macOS, Windows and Linux; no
    runtime to install. Rust needs a toolchain we do not have here; Python may be an installer stub on a
    locked-down laptop. Release pipeline copied from Ryan's agentmap.
 3. **Name `standin`, textmark `[standin]`; MIT for code and docs** (Ryan).
@@ -279,7 +279,8 @@ is in `docs/PLAN.md`; where this file and PLAN differ, PLAN wins.)
 32. **The prompt hook stays on, with an opt-out.** In general use it stops a pasted customer list or a
     known value typed into the chat. Where a person talks about their own records on purpose (an
     interview), it gets in the way and catches only full known values, so `init --no-prompt-guard` leaves
-    it out. Its block message names that flag.
+    it out. Its block message names that flag. The author confirmed on 2026-10-31 that the guard stays:
+    configurable is enough.
 33. **`scrub` refuses until the config is approved** (exit 2, "run standin approve"), when the config has
     any `keep` or `scan`. Replaces the "tokenize as `VALUE` and warn" fallback: those whole-cell stand-ins
     joined the known list, and a later approved scrub swapped whole descriptions in scan columns.
@@ -464,3 +465,111 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     name). Before, the English-word test sent it to the first-name rule. "It's", "this is" and "c'est"
     no longer count as a name spot for these words ("It's Friday."). Cost: "It's May" about a person
     is missed.
+
+### From the thorough review (2026-10-31)
+
+59. **Pin file boundaries instead of trusting path strings (R1/R2).** Private paths resolve the longest
+    existing ancestor before checking project overlap. Output files use `os.Root` handles; linked
+    output roots and nested links are refused. Why: a nested restored-folder link wrote real names
+    into scrubbed/. This preserves the standard-library-only binary.
+60. **One private-state writer at a time (R3).** A cross-process directory lease covers mapping/approval
+    reads through publication. Stale leases are never stolen automatically. Interrupted private saves
+    retain a pending mark and previous private files; readers and hooks then refuse until a person
+    recovers a matching private/output generation. A missing mapping over existing scrubbed files
+    refuses. Why: concurrent runs assigned the same stand-in to different people. This is not a claim
+    of all-files atomicity or proven power-loss durability.
+61. **Reject ambiguous input names (R4–R6).** Literal JSON field keys containing dots/brackets, blank
+    keys and `(key)` refuse; outer object-of-records names remain data. Empty-container keys are
+    inventoried and validated too. Duplicate CSV/TSV headers and duplicate headers within one Markdown
+    table refuse. Same headers in separate tables remain supported. Why: rejecting ambiguity is a
+    smaller, safer MVP than inventing escaping or guessing which keep rule the person intended.
+62. **Check filenames like headers, and against known values (R7).** Shape collects batch values only
+    in memory to check metadata; scrub checks tokenized/dropped values before releasing diagnostic
+    messages. Names flagged by either check are hidden by shape and refused by scrub. Why: swapping a
+    cell did not help when its name was still in the filename. Ordinary-word and unknown-name limits
+    remain documented.
+63. **Strict structured restore and checks after substitution (R8/R9).** CSV/TSV quoting and row widths
+    must parse; JSON must be one complete, duplicate-free value before and after restoration. Expanded
+    formulas, links and HTML tag contexts leave the source stand-ins with warnings, including hazards
+    assembled from multiple stand-ins. Why: valid-looking tokens can expand into active content.
+    This is exposure reduction, not an HTML sanitizer. Plain-text fragments use `.txt` explicitly.
+64. **Preflight setup and tell the truth on save failures (R10).** Init checks destinations before
+    creating folders, stages its file writes, rolls back new empty folders after failure, and does not
+    claim nothing changed after an incomplete save. Why: a setup failure previously left changes
+    while saying the opposite.
+65. **Strengthen the small safety checks.** JSON readers reject duplicate fields, trailing content,
+    invalid Unicode, counter gaps/overflow and mapping keys inconsistent with their spellings.
+    Terminal checks query the OS console/terminal, but a fake
+    terminal is still not proof of a person. PreToolUse matches all tools so unknown/MCP tools reach
+    the refusal; a short list of conversation/task-list tools is allowed. Why: a guard must not depend
+    on unverified decoder defaults, device types or an incomplete matcher.
+66. **Windows needs native file permissions.** Protected access lists grant the current Windows user
+    access to private folders and files; ACL failure refuses the write. Unix mode bits alone are not
+    Windows isolation. Native ACL behavior remains to be verified on Windows; OS administrators can
+    still take ownership. The mapping and recovery copies remain secrets.
+67. **Validation must show the guarded action happened.** Native CI and archive/release workflows are
+    checked into the main tree, with pinned actions and a manual snapshot path. Live smoke checks need
+    audit evidence of the requested hook/tool/path/exit code, not just absence of a private word.
+    E2e setup fails when the binary cannot build. Generated temporary paths are excluded from fixture
+    value searches so random digits do not masquerade as leaked amounts. Why: security checks must
+    distinguish an actual protected action from unrelated setup/authentication failure or test noise.
+    Hosted/native/live tests remain unrun until performed; no publication is implied by source fixes.
+68. **Email is read as text, not as a mail file (v0.3).** One message per `.eml`; `From`, `To`, `Cc`,
+    `Date` and `Subject` become fields and the body becomes free text, so config, shape, approve, scrub,
+    restore and the hooks all work unchanged and there is no second privacy path to keep correct.
+    Why: a workshop participant's inbox is the most private thing they own, and the agent needs the
+    words in it, not the MIME. Cost, stated in the shape file and the README: the scrubbed copy is a
+    plain-text view, so `restore` gives that view back, not the original message; HTML formatting,
+    links and attachments are not kept. `raw/` is never changed. The mail libraries are not usable
+    here: `net/mail` and `mime/multipart` both link `net`, which the no-network rule forbids. `mime`
+    and `mime/quotedprintable` are used; the multipart split and the HTML-to-text step are ours.
+69. **A hyphen or underscore separates words in a file name.** The name check ran the header-word test
+    on the whole stem, so `sam-notes.md` passed as one word: the name reached the shape title and the
+    first scrub, and the second scrub then refused the whole batch without saying which file. Each part
+    is now checked with the word check alone; the digit and pattern checks are not applied per part,
+    because a bare number is ordinary ("report-2026.csv", "top-100.csv"). Cost: a name that is also a
+    common word still passes (documented).
+70. **A refusal names the file when the person named it.** Twenty files in `raw/` and "A raw file (name
+    hidden): I cannot read this kind of file" is a dead end. A file typed on the command line is already
+    on the person's screen, so echoing it discloses nothing; a batch run keeps it hidden but now prints
+    the extension ("a raw file (name hidden, .xlsx)"), which is enough to tell one bad file from another.
+    The extension is echoed only when it is plain lowercase alphanumerics: a file called `.Zelda Quorn`
+    has "Zelda Quorn" where its extension would be, and the existing test suite caught exactly that.
+    Cost: a file named on the command line whose name looks like data still reads "(name hidden)".
+71. **An anonymous shape file is named by a hash of the path.** It used to take the next free
+    `file_N.shape.md`, so a second `shape` run wrote `file_2` next to a stale `file_1`, and the AI could
+    be handed the wrong one. It is now `file_<6 hex>` from the project-relative path: stable for that
+    file for ever, overwritten on each run, no state to keep. Cost: the name is opaque; the warning
+    still tells the person to rename the raw file to something plain.
+72. **A long encoded run is one word candidate.** A 16-character tracking id used to arrive as "AQH",
+    "JzLm" and "Pq": three decisions for one id, none of them meaningful, and three chances for the
+    person to keep a fragment and lose the rest. A run of 12 or more characters of letters, digits and
+    base64 "+" that holds a digit is now one token and one candidate, swapped whole. A slash, hyphen,
+    underscore or "=" ends a run, so a path ("/people/oksana"), a slug ("spring-2026-newsletter") and a
+    query part ("campaign=spring") keep their ordinary words and their ordinary treatment. Twelve
+    because eleven is still prose ("spring-2026"). Cost: the person decides about the id as a whole,
+    with no per-fragment choice, which is what an id is anyway.
+73. **One pinned, vendored module, and no bespoke dependency checking.** `go.mod` holds the version,
+    `go.sum` the hashes, `go mod tidy -diff` in CI fails when the graph drifts from the source, and
+    `vendor/` makes `git clone && go build` work offline. Why: "standard library only" was a proxy for
+    "nothing unvetted enters", and it blocked the one change that reduced hand-written parsing risk.
+    The allowlist is now `go.mod` itself, which is what Go means by an allowlist; a second, hand-written
+    list of expected modules would duplicate `go.sum` and rot on the first module rename. The check that
+    survives is the one Go cannot express: no package that can open a socket is linked.
+74. **Character sets come from `x/text`; the mail structure stays ours.** Every Go MIME parser imports
+    `net/textproto` for the header type, and that links `net`: `go-message`, `net/mail` and
+    `mime/multipart` all do (measured, not assumed), so "use a mature parser" and "no network stack in
+    the binary" are mutually exclusive in Go. Taking `x/text` alone keeps the second: it is net-free,
+    and it replaces the refusal list with real decoding for every character set a mail program names
+    (Shift-JIS, KOI8-R, GB2312, ISO-2022-JP ...). Cost: +900 KB binary and 4.4 MB vendored. The header
+    lines, the multipart split and the forwarding walk stay ours, bounded by fixtures and fail-closed
+    refusals. A script with no capital letters (Chinese, Japanese, Arabic) is still refused: the word
+    check cannot find names there. Revisit if the network rule is ever dropped.
+75. **A mature mail parser checks ours, from the test binary only.** `github.com/emersion/go-message` reads
+    the same fixtures in `internal/dataset/oracle_test.go`, and the two readings must agree word for word.
+    It is imported nowhere else, so `go list -deps ./cmd/standin` never sees it, the shipped binary still
+    links no socket, and `make no-network` still reads zero. Why: this is the only way to have a mature
+    implementation check ours without putting `net` in the product. It makes the hand-written parser
+    verified rather than merely small, which is the part that was actually bothering the author.
+    Cost: the test binary compiles it, `vendor/` carries it (+0.1 MB), and a library upgrade means
+    re-reading a diff.
