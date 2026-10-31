@@ -1,0 +1,5 @@
+# Keep source and module metadata stable on Windows checkouts too.
+* text=auto eol=lf
+
+# Fixtures include intentional encodings and line endings. Preserve their bytes.
+testdata/** -text

@@ -640,3 +640,8 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     ordinary error wrapping and joins, so reports keep their useful data-free category. Terminal
     tests accept Linux's expected end-of-terminal EIO, check other I/O failures and drain the last
     output before closing the terminal.
+87. **Checkout line endings must not change the checks or fixture bytes.** Text source and module
+    files use LF on every platform; `testdata/` keeps its exact tracked bytes, including intentional
+    encodings and CRLF. Why: the first native Windows CI stopped at `go mod tidy -diff`. A scratch
+    checkout with CRLF module files reproduced a failing diff with no dependency changes. Explicit
+    Git attributes remove that checkout-dependent difference without rewriting format fixtures.
