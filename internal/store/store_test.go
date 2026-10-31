@@ -147,12 +147,17 @@ func TestRenameFailureRollsBack(t *testing.T) {
 func TestErrorsRecorded(t *testing.T) {
 	d := canonicalTempDir(t)
 	for i := 0; i < 12; i++ {
-		RecordError(d, "scrub", "ragged")
+		if err := RecordError(d, "scrub", "ragged"); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if es := LoadErrors(d); len(es) != 10 || es[0].Code != "ragged" {
 		t.Fatalf("got %v", es)
 	}
-	RecordError(filepath.Join(d, "missing"), "scrub", "x") // no folder: no file, no panic
+	// A missing folder needs no log or lock.
+	if err := RecordError(filepath.Join(d, "missing"), "scrub", "x"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPrivateDirFollowsSymlinks(t *testing.T) {

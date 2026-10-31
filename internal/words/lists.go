@@ -11,6 +11,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"embed"
+	"errors"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -35,12 +36,12 @@ func readList(name string) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // An embedded read-only handle has no writes to flush.
 	zr, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, err
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }() // Scanner checks decoding errors; Close only releases the reader.
 	out := map[string]bool{}
 	sc := bufio.NewScanner(zr)
 	for sc.Scan() {
@@ -208,7 +209,7 @@ func Notices() (string, error) {
 		}
 		zr, err := gzip.NewReader(f)
 		if err != nil {
-			f.Close()
+			_ = f.Close() // Preserve the decode failure; the embedded file is read-only.
 			return "", err
 		}
 		sc := bufio.NewScanner(zr)
@@ -219,8 +220,9 @@ func Notices() (string, error) {
 			}
 			b.WriteString(strings.TrimPrefix(strings.TrimPrefix(l, "#"), " ") + "\n")
 		}
-		zr.Close()
-		f.Close()
+		if err := errors.Join(sc.Err(), zr.Close(), f.Close()); err != nil {
+			return "", err
+		}
 		b.WriteString("\n")
 	}
 	return b.String(), nil

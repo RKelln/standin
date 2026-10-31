@@ -6,6 +6,21 @@ import (
 	"unicode"
 )
 
+const (
+	kindEmail         = "email"
+	kindName          = "name"
+	kindStreetAddress = "street address"
+
+	categoryEmail   = "EMAIL"
+	categoryPhone   = "PHONE"
+	categoryAccount = "ACCOUNT"
+	categoryID      = "ID"
+	categoryAddress = "ADDRESS"
+	categoryPostal  = "POSTAL"
+	categoryPerson  = "PERSON"
+	categoryValue   = "VALUE"
+)
+
 // Words often found in column headers and file names. Two capitalised words
 // where both are on this list ("Customer Name") are not taken as a person's
 // name. The list is long on purpose: a header taken for a name is hidden as
@@ -89,7 +104,7 @@ func LooksLikeData(s string) (kind string, ok bool) {
 		return "", false
 	}
 	if emailRe.MatchString(t) {
-		return "email", true
+		return kindEmail, true
 	}
 	if len(phoneFinder{phoneNA}.find(t)) > 0 || len(phoneFinder{phoneIntl}.find(t)) > 0 {
 		return "phone", true
@@ -106,11 +121,11 @@ func LooksLikeData(s string) (kind string, ok bool) {
 		switch {
 		case isName(a) && isName(b) && !cb:
 			// Both not common, or a first name that is also a word (Bill, Mark).
-			return "name", true
+			return kindName, true
 		case capsWord.MatchString(a) && capsWord.MatchString(b) && !ca && !cb:
-			return "name", true
+			return kindName, true
 		case lowerWord.MatchString(a) && lowerWord.MatchString(b) && !ca && !cb:
-			return "name", true
+			return kindName, true
 		}
 	}
 	return "", false
@@ -144,7 +159,7 @@ func LooksLikeDataHeader(name string) (kind string, ok bool) {
 		return kind, true
 	}
 	if HeaderWords != nil && HeaderWords(name) {
-		return "name", true
+		return kindName, true
 	}
 	return "", false
 }
@@ -152,16 +167,16 @@ func LooksLikeDataHeader(name string) (kind string, ok bool) {
 // CategoryForKind gives the stand-in category for a LooksLikeData kind.
 func CategoryForKind(kind string) string {
 	switch kind {
-	case "email":
-		return "EMAIL"
+	case kindEmail:
+		return categoryEmail
 	case "phone":
-		return "PHONE"
+		return categoryPhone
 	case "digits":
-		return "ID"
-	case "name":
-		return "PERSON"
+		return categoryID
+	case kindName:
+		return categoryPerson
 	}
-	return "VALUE"
+	return categoryValue
 }
 
 // The phone patterns are plain regexps; give them the same look-around rules.

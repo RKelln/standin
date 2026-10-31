@@ -344,7 +344,7 @@ func (g Guard) safeScrubbedTwin(p string) bool {
 	if err != nil {
 		return false
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }() // This read-only directory pin has no writes to flush.
 	parts := strings.Split(rel, string(filepath.Separator))
 	cur := ""
 	for i, part := range parts {

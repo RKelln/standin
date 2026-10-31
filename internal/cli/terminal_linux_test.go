@@ -14,6 +14,8 @@ func TestReviewNonTerminalCharacterDevicesRefused(t *testing.T) {
 		if isTerminal(f) {
 			t.Errorf("%s is a device, not a terminal", path)
 		}
-		f.Close()
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
 	}
 }

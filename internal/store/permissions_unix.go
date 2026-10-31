@@ -2,7 +2,10 @@
 
 package store
 
-import "os"
+import (
+	"errors"
+	"os"
+)
 
 func securePath(path string, dir bool) error {
 	mode := os.FileMode(0600)
@@ -23,6 +26,5 @@ func syncRoot(r *os.Root, dirs ...string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return f.Sync()
+	return errors.Join(f.Sync(), f.Close())
 }

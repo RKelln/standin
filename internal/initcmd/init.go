@@ -19,6 +19,7 @@ import (
 
 	failure "github.com/RKelln/standin/internal/fail"
 	"github.com/RKelln/standin/internal/hook"
+	"github.com/RKelln/standin/internal/output"
 	corestore "github.com/RKelln/standin/internal/store"
 )
 
@@ -45,7 +46,10 @@ type change struct {
 var writeSetup = corestore.WriteAll
 
 // Run is the entry point for `standin init`. args excludes "init".
-func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
+	monitor := output.New(stdout, stderr)
+	stdout, stderr = monitor.Stdout, monitor.Stderr
+	defer func() { code = monitor.Finish(code) }()
 	fs := flag.NewFlagSet("standin init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	project := fs.String("project", ".", "the project folder")
@@ -59,11 +63,11 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitBlock
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "standin init: unexpected words:", strings.Join(fs.Args(), " "))
+		_, _ = fmt.Fprintln(stderr, "standin init: unexpected words:", strings.Join(fs.Args(), " "))
 		return exitBlock
 	}
 	fail := func(msg string) int {
-		fmt.Fprintln(stderr, "standin init: "+msg+"\nNothing was changed.")
+		_, _ = fmt.Fprintln(stderr, "standin init: "+msg+"\nNothing was changed.")
 		return exitBlock
 	}
 
@@ -176,11 +180,11 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 				left = append(left, filepath.ToSlash(rel))
 			}
 		}
-		fmt.Fprintln(stderr, "standin init: "+msg)
+		_, _ = fmt.Fprintln(stderr, "standin init: "+msg)
 		if len(left) > 0 {
-			fmt.Fprintln(stderr, "Some new folders remain: "+strings.Join(left, ", ")+".")
+			_, _ = fmt.Fprintln(stderr, "Some new folders remain: "+strings.Join(left, ", ")+".")
 		}
-		fmt.Fprintln(stderr, "Setup did not finish. Check the files above, then run standin init again before using the AI.")
+		_, _ = fmt.Fprintln(stderr, "Setup did not finish. Check the files above, then run standin init again before using the AI.")
 		return exitBlock
 	}
 	for _, d := range []struct {
@@ -215,42 +219,42 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		did = append(did, c.what+" "+filepath.ToSlash(c.rel)+c.note)
 	}
 
-	fmt.Fprintln(stdout, "standin init: project "+proj)
+	_, _ = fmt.Fprintln(stdout, "standin init: project "+proj)
 	if len(did) == 0 {
-		fmt.Fprintln(stdout, "Nothing to change. It was already set up.")
+		_, _ = fmt.Fprintln(stdout, "Nothing to change. It was already set up.")
 	}
 	for _, d := range did {
-		fmt.Fprintln(stdout, "  "+d)
+		_, _ = fmt.Fprintln(stdout, "  "+d)
 	}
-	fmt.Fprintln(stdout, "Private store (the secret list of real values) will be kept here, outside the project:")
-	fmt.Fprintln(stdout, "  "+store)
-	fmt.Fprintln(stdout, "Never give that folder, or the mapping.json in it, to an AI.")
-	fmt.Fprintln(stdout, "Next: put your real files in raw/, then run: standin shape raw/<file>")
+	_, _ = fmt.Fprintln(stdout, "Private store (the secret list of real values) will be kept here, outside the project:")
+	_, _ = fmt.Fprintln(stdout, "  "+store)
+	_, _ = fmt.Fprintln(stdout, "Never give that folder, or the mapping.json in it, to an AI.")
+	_, _ = fmt.Fprintln(stdout, "Next: put your real files in raw/, then run: standin shape raw/<file>")
 	if harnesses["claude"] {
-		fmt.Fprintln(stdout, "Claude Code: restart it in this folder so it loads the hooks.")
+		_, _ = fmt.Fprintln(stdout, "Claude Code: restart it in this folder so it loads the hooks.")
 		if *shared {
-			fmt.Fprintln(stdout, "The hooks are in .claude/settings.json. It holds this computer's path to standin, so it may not work for others who share it.")
+			_, _ = fmt.Fprintln(stdout, "The hooks are in .claude/settings.json. It holds this computer's path to standin, so it may not work for others who share it.")
 		} else {
-			fmt.Fprintln(stdout, "The hooks are in .claude/settings.local.json, for this computer only. If this folder is in git, add that file to .gitignore.")
+			_, _ = fmt.Fprintln(stdout, "The hooks are in .claude/settings.local.json, for this computer only. If this folder is in git, add that file to .gitignore.")
 		}
 		if *noPromptGuard {
-			fmt.Fprintln(stdout, "The prompt guard is off (--no-prompt-guard): your own chat messages are not checked for real values.")
+			_, _ = fmt.Fprintln(stdout, "The prompt guard is off (--no-prompt-guard): your own chat messages are not checked for real values.")
 		} else {
-			fmt.Fprintln(stdout, "The prompt guard is on: a chat message that holds a real value standin knows is not sent.")
-			fmt.Fprintln(stdout, "  If you talk about your own records on purpose, run: standin init --no-prompt-guard")
+			_, _ = fmt.Fprintln(stdout, "The prompt guard is on: a chat message that holds a real value standin knows is not sent.")
+			_, _ = fmt.Fprintln(stdout, "  If you talk about your own records on purpose, run: standin init --no-prompt-guard")
 		}
-		fmt.Fprintln(stdout, "Be aware: the shell check is only a guess from the command text. A script or a clever command")
-		fmt.Fprintln(stdout, "  can still read raw/. The hooks are a safety net, not a wall.")
-		fmt.Fprintln(stdout, "We recommend turning on Claude Code's shell sandbox. With these deny rules, it blocks shell commands from raw/ and restored/:")
-		fmt.Fprintln(stdout, `  add "sandbox": {"enabled": true, "allowUnsandboxedCommands": false} to .claude/settings.local.json.`)
-		fmt.Fprintln(stdout, "  It works on macOS, Linux (needs bubblewrap and socat) and WSL2, not on plain Windows.")
-		fmt.Fprintln(stdout, "  Check /sandbox to make sure it started. File tools, MCP servers and hooks run outside the shell sandbox.")
+		_, _ = fmt.Fprintln(stdout, "Be aware: the shell check is only a guess from the command text. A script or a clever command")
+		_, _ = fmt.Fprintln(stdout, "  can still read raw/. The hooks are a safety net, not a wall.")
+		_, _ = fmt.Fprintln(stdout, "We recommend turning on Claude Code's shell sandbox. With these deny rules, it blocks shell commands from raw/ and restored/:")
+		_, _ = fmt.Fprintln(stdout, `  add "sandbox": {"enabled": true, "allowUnsandboxedCommands": false} to .claude/settings.local.json.`)
+		_, _ = fmt.Fprintln(stdout, "  It works on macOS, Linux (needs bubblewrap and socat) and WSL2, not on plain Windows.")
+		_, _ = fmt.Fprintln(stdout, "  Check /sandbox to make sure it started. File tools, MCP servers and hooks run outside the shell sandbox.")
 	}
 	if harnesses["codex"] || harnesses["opencode"] {
-		fmt.Fprintln(stdout, "Codex and OpenCode notes are in standin-harness/. They are untested; read them before you use them.")
+		_, _ = fmt.Fprintln(stdout, "Codex and OpenCode notes are in standin-harness/. They are untested; read them before you use them.")
 	}
 	for _, w := range warnings {
-		fmt.Fprintln(stderr, "Warning: "+w)
+		_, _ = fmt.Fprintln(stderr, "Warning: "+w)
 	}
 	if len(warnings) > 0 {
 		return exitWarn

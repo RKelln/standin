@@ -14,6 +14,7 @@ import (
 	"github.com/RKelln/standin/internal/config"
 	"github.com/RKelln/standin/internal/fail"
 	"github.com/RKelln/standin/internal/mapping"
+	"github.com/RKelln/standin/internal/output"
 	"github.com/RKelln/standin/internal/shape"
 	"github.com/RKelln/standin/internal/store"
 	"github.com/RKelln/standin/internal/words"
@@ -57,9 +58,9 @@ func rowsKeepsFirst(cfg *config.Config) []reviewRow {
 	return rows
 }
 
-func printReview(w io.Writer, cfg *config.Config) {
+func printReview(w io.Writer, cfg *config.Config) error {
 	tw := tabwriter.NewWriter(w, 2, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ACTION\tFILES\tCOLUMN\tCATEGORY\tREASON")
+	_, _ = fmt.Fprintln(tw, "ACTION\tFILES\tCOLUMN\tCATEGORY\tREASON")
 	for _, r := range rowsKeepsFirst(cfg) {
 		action := r.col.Action
 		switch action {
@@ -75,18 +76,21 @@ func printReview(w io.Writer, cfg *config.Config) {
 		if cat == "" {
 			cat = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", action, r.match, r.column, cat, oneLine(r.col.Reason))
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", action, r.match, r.column, cat, oneLine(r.col.Reason))
 	}
-	tw.Flush()
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "keep      the AI sees the real values. Only keep what is not private.")
-	fmt.Fprintln(w, "scan      free text: known values and patterns are swapped; names I do not know stay in.")
-	fmt.Fprintln(w, "          (In a .md or .txt file, a scan field gets the word check too.)")
-	fmt.Fprintln(w, "words     free text in a .md or .txt file: names and unusual words become stand-ins")
-	fmt.Fprintln(w, "          like [NAME_1], except words you keep in approve. Words I do not flag stay in.")
-	fmt.Fprintln(w, "tokenize  each value becomes a stand-in like [PERSON_1].")
-	fmt.Fprintln(w, "drop      the value is blanked.")
-	fmt.Fprintln(w, "Any column, field or table column not listed is tokenized. Free text not listed is dropped.")
+	if err := tw.Flush(); err != nil {
+		return output.Failure()
+	}
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "keep      the AI sees the real values. Only keep what is not private.")
+	_, _ = fmt.Fprintln(w, "scan      free text: known values and patterns are swapped; names I do not know stay in.")
+	_, _ = fmt.Fprintln(w, "          (In a .md or .txt file, a scan field gets the word check too.)")
+	_, _ = fmt.Fprintln(w, "words     free text in a .md or .txt file: names and unusual words become stand-ins")
+	_, _ = fmt.Fprintln(w, "          like [NAME_1], except words you keep in approve. Words I do not flag stay in.")
+	_, _ = fmt.Fprintln(w, "tokenize  each value becomes a stand-in like [PERSON_1].")
+	_, _ = fmt.Fprintln(w, "drop      the value is blanked.")
+	_, _ = fmt.Fprintln(w, "Any column, field or table column not listed is tokenized. Free text not listed is dropped.")
+	return nil
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
@@ -134,8 +138,10 @@ func runReview(c *ctx) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(c.env.Stdout, "Config: %s\n\n", config.FileName)
-	printReview(c.env.Stdout, cfg)
+	_, _ = fmt.Fprintf(c.env.Stdout, "Config: %s\n\n", config.FileName)
+	if err := printReview(c.env.Stdout, cfg); err != nil {
+		return err
+	}
 	privDir, err := c.privateDir(false)
 	if err != nil {
 		return err
@@ -147,10 +153,10 @@ func runReview(c *ctx) error {
 	if usesWords(cfg) {
 		// Counts only, in bands: the AI may run review (decision 18), and the
 		// words themselves are shown only inside approve, on a terminal.
-		fmt.Fprintln(c.env.Stdout)
+		_, _ = fmt.Fprintln(c.env.Stdout)
 		r, err := c.dryRun(cfg, privDir)
 		if err != nil {
-			fmt.Fprintf(c.env.Stdout, "Free text: I could not count the words (%s).\n", fail.Code(err))
+			_, _ = fmt.Fprintf(c.env.Stdout, "Free text: I could not count the words (%s).\n", fail.Code(err))
 			c.warnings++
 		} else {
 			var all []*words.Cand
@@ -158,19 +164,19 @@ func runReview(c *ctx) error {
 				all = r.finder.Candidates()
 			}
 			g := countGroups(all)
-			fmt.Fprintf(c.env.Stdout, "Free text, word check: unusual words %s, name-like words %s, day and month names %s; new since the last approve: %s.\n",
+			_, _ = fmt.Fprintf(c.env.Stdout, "Free text, word check: unusual words %s, name-like words %s, day and month names %s; new since the last approve: %s.\n",
 				shape.CountBand(g.unusual), shape.CountBand(g.nameLike), shape.CountBand(g.calendar), shape.CountBand(len(r.newWords())))
-			fmt.Fprintln(c.env.Stdout, "Review shows counts only. The person sees the words, and picks any to keep, in `standin approve`.")
+			_, _ = fmt.Fprintln(c.env.Stdout, "Review shows counts only. The person sees the words, and picks any to keep, in `standin approve`.")
 		}
 	}
-	fmt.Fprintln(c.env.Stdout)
+	_, _ = fmt.Fprintln(c.env.Stdout)
 	switch {
 	case !needsApproval(cfg):
-		fmt.Fprintln(c.env.Stdout, "This config has no keep, scan or word check, so it needs no approval.")
+		_, _ = fmt.Fprintln(c.env.Stdout, "This config has no keep, scan or word check, so it needs no approval.")
 	case approved:
-		fmt.Fprintln(c.env.Stdout, "Approved: yes. The keeps, scans and word choices above will be used.")
+		_, _ = fmt.Fprintln(c.env.Stdout, "Approved: yes. The keeps, scans and word choices above will be used.")
 	default:
-		fmt.Fprintf(c.env.Stdout, "Approved: no. %s `standin scrub` will not run until you run `standin approve` yourself, in your own terminal.\n", why)
+		_, _ = fmt.Fprintf(c.env.Stdout, "Approved: no. %s `standin scrub` will not run until you run `standin approve` yourself, in your own terminal.\n", why)
 		c.warnings++
 	}
 	return nil
@@ -202,11 +208,16 @@ func runApprove(c *ctx) error {
 		}
 	}()
 	out := c.env.Stdout
-	fmt.Fprintf(out, "Config: %s\n\n", config.FileName)
-	printReview(out, cfg)
-	fmt.Fprintln(out)
+	_, _ = fmt.Fprintf(out, "Config: %s\n\n", config.FileName)
+	if err := printReview(out, cfg); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(out)
 	in := bufio.NewReader(c.env.Stdin)
 	readLine := func() (string, error) {
+		if err := c.output.Error(); err != nil {
+			return "", err
+		}
 		line, err := in.ReadString('\n')
 		if err != nil && line == "" {
 			return "", fail.New("no-answer", "I got no answer, so I approved nothing.")
@@ -214,7 +225,7 @@ func runApprove(c *ctx) error {
 		return line, nil
 	}
 	ask := func(q string) (bool, error) {
-		fmt.Fprint(out, q+" Type yes: ")
+		_, _ = fmt.Fprint(out, q+" Type yes: ")
 		line, err := readLine()
 		if err != nil {
 			return false, err
@@ -293,6 +304,9 @@ func runApprove(c *ctx) error {
 	if !ok {
 		return fail.New("not-approved", "Not approved. Nothing changed.")
 	}
+	if err := c.output.Error(); err != nil {
+		return err
+	}
 	if err := store.Ensure(privDir); err != nil {
 		return err
 	}
@@ -342,16 +356,16 @@ func (c *ctx) approveWords(cfg *config.Config, privDir string, out io.Writer, re
 			groupB = append(groupB, cd)
 		}
 	}
-	fmt.Fprintln(out)
-	fmt.Fprintf(out, "Free text: %d unusual words, %d name-like words, %d day and month names. New since the last approve: %d.\n",
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintf(out, "Free text: %d unusual words, %d name-like words, %d day and month names. New since the last approve: %d.\n",
 		g.unusual, g.nameLike, g.calendar, len(fresh))
 	if len(fresh) == 0 {
-		fmt.Fprintln(out, "No new words to ask you about.")
+		_, _ = fmt.Fprintln(out, "No new words to ask you about.")
 		return ch, nil
 	}
-	fmt.Fprintln(out, "Words you keep stay in the text the AI reads. Words you do not keep become stand-ins like [NAME_4].")
-	fmt.Fprintln(out, "Next to each word: how often I flagged it, and a short piece of the text. Other flagged words show as "+words.Mask+".")
-	fmt.Fprintln(out, "This screen shows real words from your files. Do not copy it to the AI.")
+	_, _ = fmt.Fprintln(out, "Words you keep stay in the text the AI reads. Words you do not keep become stand-ins like [NAME_4].")
+	_, _ = fmt.Fprintln(out, "Next to each word: how often I flagged it, and a short piece of the text. Other flagged words show as "+words.Mask+".")
+	_, _ = fmt.Fprintln(out, "This screen shows real words from your files. Do not copy it to the AI.")
 	pick := func(title, help string, list []*words.Cand) error {
 		for start := 0; start < len(list); start += pageSize {
 			end := start + pageSize
@@ -359,14 +373,14 @@ func (c *ctx) approveWords(cfg *config.Config, privDir string, out io.Writer, re
 				end = len(list)
 			}
 			page := list[start:end]
-			fmt.Fprintln(out)
-			fmt.Fprintf(out, "%s (%d to %d of %d). %s\n", title, start+1, end, len(list), help)
+			_, _ = fmt.Fprintln(out)
+			_, _ = fmt.Fprintf(out, "%s (%d to %d of %d). %s\n", title, start+1, end, len(list), help)
 			for i, cd := range page {
-				fmt.Fprintf(out, "  %2d  %-18s x%-4d \"%s\"\n", i+1, cd.Word, cd.Count, r.finder.Context(cd))
+				_, _ = fmt.Fprintf(out, "  %2d  %-18s x%-4d \"%s\"\n", i+1, cd.Word, cd.Count, r.finder.Context(cd))
 			}
 			var nums []int
 			for tries := 0; ; tries++ {
-				fmt.Fprint(out, "Keep: ")
+				_, _ = fmt.Fprint(out, "Keep: ")
 				line, err := readLine()
 				if err != nil {
 					return err
@@ -378,7 +392,7 @@ func (c *ctx) approveWords(cfg *config.Config, privDir string, out io.Writer, re
 				if tries >= 2 {
 					return fail.New("bad-answer", "I could not read your answer, so I approved nothing. Run approve again.")
 				}
-				fmt.Fprintf(out, "Type numbers from 1 to %d, like 1 3 5-7, or press Enter to keep none.\n", len(page))
+				_, _ = fmt.Fprintf(out, "Type numbers from 1 to %d, like 1 3 5-7, or press Enter to keep none.\n", len(page))
 			}
 			kept := map[int]bool{}
 			for _, n := range nums {

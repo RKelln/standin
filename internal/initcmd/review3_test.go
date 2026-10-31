@@ -24,8 +24,12 @@ func TestInitPreflightsEveryDestination(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				os.MkdirAll(filepath.Dir(path), 0755)
-				os.WriteFile(path, []byte("blocker"), 0644)
+				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("blocker"), 0644); err != nil {
+					t.Fatal(err)
+				}
 			}
 			before := snapshot(t, p)
 			r := runInit(t, "--project", p, "--bin", "/x/standin", "--harness", "claude,codex")
@@ -42,7 +46,9 @@ func TestInitPreflightsEveryDestination(t *testing.T) {
 func TestInitRollsBackNewFoldersAfterPublishFailure(t *testing.T) {
 	fakeClaude(t, "2.1.300", true, nil)
 	p := newProject(t)
-	os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte("# Existing instructions\n"), 0600)
+	if err := os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte("# Existing instructions\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	before := snapshot(t, p)
 	old := writeSetup
 	writeSetup = func([]store.Out) error { return errors.New("invented write failure") }

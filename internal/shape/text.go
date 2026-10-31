@@ -95,7 +95,7 @@ func TextMarkdown(d *dataset.Dataset, shownPath, version string, tc TextCounts) 
 		for _, c := range cols {
 			fmt.Fprintf(&b, "### Table column %s\n\n", mdCode(tableLabel(c)))
 			if c.HeaderFlag != "" {
-				if c.HeaderFlag == "empty" {
+				if c.HeaderFlag == headerFlagEmpty {
 					b.WriteString("- Header: blank. The config cannot name it, so Standin tokenizes it.\n")
 				} else {
 					b.WriteString("- **Header hidden:** it looks like private data. The config cannot name it, so Standin tokenizes it and swaps the header too.\n")

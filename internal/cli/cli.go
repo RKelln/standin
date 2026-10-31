@@ -13,6 +13,7 @@ import (
 	"github.com/RKelln/standin/internal/fail"
 	"github.com/RKelln/standin/internal/hook"
 	"github.com/RKelln/standin/internal/initcmd"
+	"github.com/RKelln/standin/internal/output"
 	"github.com/RKelln/standin/internal/scan"
 	"github.com/RKelln/standin/internal/store"
 )
@@ -21,7 +22,7 @@ import (
 const (
 	ExitOK      = 0 // done
 	ExitWarn    = 1 // done, with warnings or findings
-	ExitRefused = 2 // refused or error; nothing written
+	ExitRefused = 2 // refused or error; the message explains whether files were saved
 )
 
 const textInputLabel = "typed text"
@@ -52,11 +53,12 @@ type ctx struct {
 	privDir  string
 	printed  bool // private path printed already
 	quiet    bool // drop warnings (a dry run inside approve or review)
+	output   *output.Monitor
 }
 
 // msg prints a line for the person (to stderr, so stdout stays clean).
 func (c *ctx) msg(format string, args ...any) {
-	fmt.Fprintf(c.env.Stderr, format+"\n", args...)
+	_, _ = fmt.Fprintf(c.env.Stderr, format+"\n", args...)
 }
 
 // warn prints a warning and makes the exit code 1.
@@ -65,7 +67,7 @@ func (c *ctx) warn(format string, args ...any) {
 		return
 	}
 	c.warnings++
-	fmt.Fprintf(c.env.Stderr, "Warning: "+format+"\n", args...)
+	_, _ = fmt.Fprintf(c.env.Stderr, "Warning: "+format+"\n", args...)
 }
 
 type command struct {
@@ -112,21 +114,24 @@ Commands:
 `
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, intro)
+	_, _ = fmt.Fprint(w, intro)
 	for _, cmd := range commands {
-		fmt.Fprintf(w, "  %-46s %s\n", cmd.usage, cmd.summary)
+		_, _ = fmt.Fprintf(w, "  %-46s %s\n", cmd.usage, cmd.summary)
 	}
-	fmt.Fprint(w, `
+	_, _ = fmt.Fprint(w, `
 Options:
   --project DIR   the project folder (default: this folder)
   --private DIR   where the mapping lives (default: $STANDIN_HOME, or ~/.standin)
 
-Exit codes: 0 done, 1 done with warnings or findings, 2 stopped (nothing written).
+Exit codes: 0 done, 1 done with warnings or findings, 2 stopped (read the reason).
 `)
 }
 
 // Run runs standin with args (without the program name) and returns the exit code.
-func Run(args []string, env Env) int {
+func Run(args []string, env Env) (code int) {
+	monitor := output.New(env.Stdout, env.Stderr)
+	env.Stdout, env.Stderr = monitor.Stdout, monitor.Stderr
+	defer func() { code = monitor.Finish(code) }()
 	if env.Getenv == nil {
 		env.Getenv = os.Getenv
 	}
@@ -153,16 +158,16 @@ func Run(args []string, env Env) int {
 		}
 	}
 	if cmd == nil {
-		fmt.Fprintf(env.Stderr, "I do not know the command %q. Run `standin help` to see the commands.\n", args[0])
+		_, _ = fmt.Fprintf(env.Stderr, "I do not know the command %q. Run `standin help` to see the commands.\n", args[0])
 		return ExitRefused
 	}
 	if cmd.direct != nil {
 		return cmd.direct(args[1:], env.Stdin, env.Stdout, env.Stderr)
 	}
-	c := &ctx{env: env, cmd: cmd.name}
+	c := &ctx{env: env, cmd: cmd.name, output: monitor}
 	project, help, err := c.parseFlags(args[1:])
 	if help {
-		fmt.Fprintf(env.Stdout, "Usage: %s\n\n%s\n", cmd.usage, cmd.summary)
+		_, _ = fmt.Fprintf(env.Stdout, "Usage: %s\n\n%s\n", cmd.usage, cmd.summary)
 		return ExitOK
 	}
 	if err == nil {
@@ -172,11 +177,13 @@ func Run(args []string, env Env) int {
 		err = cmd.run(c)
 	}
 	if err != nil {
-		fmt.Fprintf(env.Stderr, "Stopped: %s\n", err.Error())
+		_, _ = fmt.Fprintf(env.Stderr, "Stopped: %s\n", err.Error())
 		if c.privDir == "" && c.project != "" {
 			c.privDir, _ = store.PrivateDir(c.project, c.private, env.Getenv("STANDIN_HOME"))
 		}
-		store.RecordError(c.privDir, c.cmd, fail.Code(err))
+		if logErr := store.RecordError(c.privDir, c.cmd, fail.Code(err)); logErr != nil {
+			_, _ = fmt.Fprintln(env.Stderr, "Warning: "+logErr.Error())
+		}
 		return ExitRefused
 	}
 	if c.warnings > 0 {

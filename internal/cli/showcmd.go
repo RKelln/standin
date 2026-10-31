@@ -43,7 +43,7 @@ func runShow(c *ctx) error {
 		if k := len(e.Spellings) - 1; k > 0 {
 			more = fmt.Sprintf("   (also written %d other way(s))", k)
 		}
-		fmt.Fprintf(c.env.Stdout, "%s  %s%s\n", n, e.Value(), more)
+		_, _ = fmt.Fprintf(c.env.Stdout, "%s  %s%s\n", n, e.Value(), more)
 	}
 	return nil
 }

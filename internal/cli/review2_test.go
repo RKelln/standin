@@ -152,7 +152,11 @@ func TestDevNullIsNotATerminal(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	defer f.Close()
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if isTerminal(f) {
 		t.Error("the null device counted as a terminal")
 	}

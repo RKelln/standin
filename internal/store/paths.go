@@ -68,21 +68,21 @@ func openBoundary(dir string) (*os.Root, error) {
 		}
 		info, err := r.Lstat(part)
 		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			r.Close()
+			_ = r.Close() // Read-only directory handle; preserve the boundary refusal.
 			return nil, boundaryError()
 		}
 		next, err := r.OpenRoot(part)
 		if err != nil {
-			r.Close()
+			_ = r.Close() // Read-only directory handle; preserve the boundary refusal.
 			return nil, boundaryError()
 		}
 		actual, err := next.Stat(".")
 		if err != nil || !os.SameFile(info, actual) {
-			next.Close()
-			r.Close()
+			_ = next.Close() // No writes went through either directory handle.
+			_ = r.Close()
 			return nil, boundaryError()
 		}
-		r.Close()
+		_ = r.Close() // Closing the parent does not affect the pinned child.
 		r = next
 	}
 	return r, nil

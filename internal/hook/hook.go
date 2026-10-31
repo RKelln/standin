@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/RKelln/standin/internal/output"
 )
 
 // Exit codes (docs/PLAN.md).
@@ -25,7 +27,10 @@ const maxInput = 64 << 20 // 64 MiB of hook JSON is more than any real call
 
 // Run is the entry point for `standin hook ...`. args excludes "hook" itself:
 // for example ["claude", "PreToolUse"]. An old --project flag is still read.
-func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
+	monitor := output.New(stdout, stderr)
+	stdout, stderr = monitor.Stdout, monitor.Stderr
+	defer func() { code = monitor.Finish(code) }()
 	fs := flag.NewFlagSet("standin hook", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	project := fs.String("project", "", "project folder")
@@ -100,7 +105,7 @@ func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
 }
 
 func block(stderr io.Writer, msg string) int {
-	fmt.Fprintln(stderr, strings.TrimSpace(msg))
+	_, _ = fmt.Fprintln(stderr, strings.TrimSpace(msg))
 	return exitBlock
 }
 

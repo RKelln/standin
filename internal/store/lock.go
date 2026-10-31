@@ -43,18 +43,21 @@ func lockFor(dir string, wait time.Duration) (*Lease, error) {
 			break
 		}
 		if !errors.Is(err, fs.ErrExist) {
-			r.Close()
+			_ = r.Close() // Read-only directory handle; preserve the lock error.
 			return nil, fail.New("private-lock", "I could not lock the private folder safely.")
 		}
 		if time.Now().After(deadline) {
-			r.Close()
+			_ = r.Close() // No lock was acquired and no file data was written.
 			return nil, fail.New("private-busy", "Another Standin run is using the private folder, or a run stopped before it finished. Wait for it to finish. If no run is open, ask the person to check the private folder before removing .standin-lock.")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	if err := securePath(filepath.Join(dir, LockFile), true); err != nil {
-		r.Remove(LockFile)
-		r.Close()
+		removeErr := r.Remove(LockFile)
+		_ = r.Close() // The removal result determines whether a stale lock remains.
+		if removeErr != nil {
+			return nil, fail.New("private-lock", "I could not secure or remove a new private-folder lock. Ask the person to check .standin-lock before trying again.")
+		}
 		return nil, err
 	}
 	ownedLocks.Lock()
@@ -62,8 +65,7 @@ func lockFor(dir string, wait time.Duration) (*Lease, error) {
 	ownedLocks.Unlock()
 	l := &Lease{root: r, dir: dir}
 	if err := CheckReady(dir); err != nil {
-		l.Close()
-		return nil, err
+		return nil, withCleanup(err, l.Close())
 	}
 	return l, nil
 }
@@ -79,9 +81,12 @@ func (l *Lease) Close() error {
 	cerr := l.root.Close()
 	l.root = nil
 	if err != nil {
-		return err
+		return fail.New("private-lock", "I could not remove the private-folder lock. The command may have saved files. Ask the person to check the outputs and .standin-lock before trying again.")
 	}
-	return cerr
+	if cerr != nil {
+		return fail.New("private-lock", "I removed the private-folder lock, but could not close its folder handle. The command may have saved files. Check the outputs before trying again.")
+	}
+	return nil
 }
 
 // CheckReady refuses an unfinished save, or another process's active/stale

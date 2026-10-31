@@ -154,7 +154,7 @@ func Ensure(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }() // Read-only directory handle; no buffered writes.
 	if err := securePath(dir, true); err != nil {
 		return fail.New("private", "I could not lock the private folder %s: %s", dir, fail.Reason(err))
 	}
@@ -202,7 +202,7 @@ var beforePublish func(int)
 // batches keep previous files and a pending marker until publication finishes;
 // interrupted saves must be recovered by the person. This is not a claim of
 // an all-files atomic commit or power-loss durability.
-func WriteAll(outs []Out) error {
+func WriteAll(outs []Out) (result error) {
 	// Reject aliases before even making folders. Case-folding on every platform
 	// makes a batch safe to use on case-insensitive file systems too.
 	var destinations []string
@@ -231,16 +231,25 @@ func WriteAll(outs []Out) error {
 	roots := map[string]*os.Root{}
 	defer func() {
 		for _, r := range roots {
-			r.Close()
+			_ = r.Close() // Directory pins only; file closes and directory syncs are checked.
 		}
 	}()
-	cleanup := func() {
+	cleanup := func() bool {
+		clean := true
 		for _, s := range st {
 			if s.tmp != "" {
-				s.root.Remove(s.tmp)
+				if err := s.root.Remove(s.tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					clean = false
+				}
 			}
 		}
+		return clean
 	}
+	defer func() {
+		if !cleanup() {
+			result = withCleanup(result, cleanupError())
+		}
+	}()
 	// Preflight every path before staging any output. Privacy boundaries must
 	// be real directories; os.Root prevents a later link change from escaping.
 	for _, o := range outs {
@@ -285,13 +294,11 @@ func WriteAll(outs []Out) error {
 			dirPerm = 0700
 		}
 		if err := r.MkdirAll(dir, dirPerm); err != nil {
-			cleanup()
-			return fail.New("write", "I could not make a folder for the output (%s). I wrote nothing.", fail.Reason(err))
+			return fail.New("write", "I could not make a folder for the output (%s). I did not save the final output files.", fail.Reason(err))
 		}
 		f, tmp, err := rootTemp(r, dir, o.Perm)
 		if err != nil {
-			cleanup()
-			return fail.New("write", "I could not write an output file (%s). I wrote nothing.", fail.Reason(err))
+			return withCleanup(fail.New("write", "I could not write an output file (%s). I did not save the final output files.", fail.Reason(err)), atomicCleanupError(err))
 		}
 		s.tmp = tmp
 		err = f.Chmod(o.Perm)
@@ -305,8 +312,7 @@ func WriteAll(outs []Out) error {
 			err = cerr
 		}
 		if err != nil {
-			cleanup()
-			return fail.New("write", "I could not write an output file (%s). I wrote nothing.", fail.Reason(err))
+			return fail.New("write", "I could not write an output file (%s). I did not save the final output files.", fail.Reason(err))
 		}
 		if old, err := r.ReadFile(s.name); err == nil {
 			s.backup, s.existed = old, true
@@ -314,7 +320,6 @@ func WriteAll(outs []Out) error {
 				s.mode = info.Mode().Perm()
 			}
 		} else if !errors.Is(err, fs.ErrNotExist) {
-			cleanup()
 			return fail.New("write", "I could not save the old output for rollback. I wrote no output files.")
 		}
 	}
@@ -329,24 +334,20 @@ func WriteAll(outs []Out) error {
 		if pending == nil {
 			pending = s.root
 			if _, err := pending.Lstat(PendingFile); err == nil || !errors.Is(err, fs.ErrNotExist) {
-				cleanup()
 				return fail.New("private-pending", "A previous save did not finish. Ask the person to recover the private folder before trying again.")
 			}
 		}
 		if s.existed {
 			if err := rootAtomic(s.root, ".standin-previous-"+base, s.backup, 0600); err != nil {
-				cleanup()
-				return fail.New("write", "I could not save the previous private file. I wrote no output files.")
+				return withCleanup(fail.New("write", "I could not save the previous private file. I did not save the final output files."), atomicCleanupError(err))
 			}
 		}
 	}
 	if pending != nil {
 		if err := rootAtomic(pending, PendingFile, []byte("{\"version\":1,\"note\":\"SECRET. A save is in progress. Do not use the mapping until it finishes. Previous private files are .standin-previous-*.\"}\n"), 0600); err != nil {
-			cleanup()
-			return fail.New("write", "I could not mark the private save safely. I wrote no output files.")
+			return withCleanup(fail.New("write", "I could not mark the private save safely. I did not save the final output files."), atomicCleanupError(err))
 		}
 		if err := syncRoot(pending); err != nil {
-			cleanup()
 			return fail.New("private-pending", "I could not confirm the unfinished-save mark was saved. I stopped before publishing files. Ask the person to check the private folder.")
 		}
 	}
@@ -368,8 +369,8 @@ func WriteAll(outs []Out) error {
 					}
 				}
 			}
-			for j := i; j < len(st); j++ {
-				st[j].root.Remove(st[j].tmp)
+			if !cleanup() {
+				rolledBack = false
 			}
 			if !rolledBack {
 				return fail.New("write-rollback", "I could not finish saving or put back every file. Stop using these outputs. Ask the person to recover the private folder and scrubbed files from a matching backup.")
@@ -416,8 +417,10 @@ func rootTemp(r *os.Root, dir string, perm os.FileMode) (*os.File, string, error
 	f, err := r.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_RDWR, perm)
 	if err == nil && perm.Perm() == 0600 {
 		if e := secureFile(filepath.Join(r.Name(), name), f); e != nil {
-			f.Close()
-			r.Remove(name)
+			_ = f.Close() // Still empty: no private bytes were written before ACL setup.
+			if err := r.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return nil, "", cleanupError()
+			}
 			return nil, "", e
 		}
 	}
@@ -435,12 +438,20 @@ func syncParents(r *os.Root, name string) error {
 	}
 }
 
-func rootAtomic(r *os.Root, name string, data []byte, perm os.FileMode) error {
+func rootAtomic(r *os.Root, name string, data []byte, perm os.FileMode) (result error) {
 	f, tmp, err := rootTemp(r, filepath.Dir(name), perm)
 	if err != nil {
 		return err
 	}
-	defer r.Remove(tmp)
+	defer func() {
+		if tmp != "" {
+			if err := r.Remove(tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				// The system error may hold a private path. Cleanup guidance is
+				// data-free and still makes clear that the save did not finish.
+				result = cleanupError()
+			}
+		}
+	}()
 	_, err = f.Write(data)
 	if err == nil {
 		err = f.Sync()
@@ -451,7 +462,33 @@ func rootAtomic(r *os.Root, name string, data []byte, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	return r.Rename(tmp, name)
+	if err := r.Rename(tmp, name); err != nil {
+		return err
+	}
+	tmp = "" // Renamed successfully; do not remove the published output.
+	return nil
+}
+
+func cleanupError() error {
+	return fail.New("write-cleanup", "The save did not finish, and I could not remove every temporary output file. Stop using these outputs. Ask the person to check the output and private folders before trying again.")
+}
+
+// Only the data-free cleanup warning may accompany an outer save error.
+func atomicCleanupError(err error) error {
+	if fail.Code(err) == "write-cleanup" {
+		return err
+	}
+	return nil
+}
+
+func withCleanup(primary, cleanup error) error {
+	if cleanup == nil {
+		return primary
+	}
+	if primary == nil {
+		return cleanup
+	}
+	return fail.New(fail.Code(primary), "%s %s", primary.Error(), cleanup.Error())
 }
 
 // Approval is what approve stores.
@@ -513,23 +550,26 @@ type ErrorEntry struct {
 const keepErrors = 10
 
 // RecordError adds a data-free error record to the private folder, if it
-// exists. It never fails the command.
-func RecordError(dir, command, code string) {
+// exists. Logging is optional; only failure to release its lease is returned.
+func RecordError(dir, command, code string) (result error) {
 	if dir == "" || !Exists(dir) {
-		return
+		return nil
 	}
 	lease, err := lockFor(dir, 0)
 	if err != nil {
-		return
+		return nil
 	}
-	defer lease.Close()
+	defer func() { result = lease.Close() }()
 	es := LoadErrors(dir)
 	es = append(es, ErrorEntry{Time: time.Now().UTC().Format(time.RFC3339), Command: command, Code: code})
 	if len(es) > keepErrors {
 		es = es[len(es)-keepErrors:]
 	}
 	b, _ := json.MarshalIndent(es, "", "  ")
+	// The refusal is already reported. An optional log-save failure must not
+	// replace it; any private temp stays confined to the private boundary.
 	_ = WriteAll([]Out{{Path: filepath.Join(dir, ErrorsFile), Data: append(b, '\n'), Perm: 0o600}})
+	return nil
 }
 
 // LoadErrors reads the error records, or none.
@@ -564,7 +604,7 @@ left-over lone-cr mapping-bad mapping-missing mapping-read name-is-data no-answe
 no-raw no-terminal not-approved not-found not-raw not-text output-boundary private private-busy
 private-inside private-lock private-pending private-permissions project ragged read same-output
 standin-in-input stdout-not-terminal txt-table uncased-script unsupported usage word-lists words-bad
-words-read write write-rollback write-sync`)
+words-read write write-cleanup write-rollback write-sync`)
 
 func stringSet(s string) map[string]bool {
 	m := map[string]bool{}

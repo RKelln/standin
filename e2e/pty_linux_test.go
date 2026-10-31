@@ -21,7 +21,7 @@ func (p *project) runWithTTY(answer string, args ...string) (result, error) {
 	if err != nil {
 		return result{}, err
 	}
-	defer master.Close()
+	defer func() { _ = master.Close() }() // Early-failure cleanup; the normal path checks Close below.
 	var unlock int32
 	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, master.Fd(), syscall.TIOCSPTLCK,
 		uintptr(unsafe.Pointer(&unlock))); e != 0 {
@@ -42,17 +42,34 @@ func (p *project) runWithTTY(answer string, args ...string) (result, error) {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
 	if err := cmd.Start(); err != nil {
-		slave.Close()
-		return result{}, err
+		return result{}, errors.Join(err, slave.Close())
 	}
-	slave.Close()
+	if err := slave.Close(); err != nil {
+		return result{}, errors.Join(err, cmd.Process.Kill(), cmd.Wait())
+	}
 	var out bytes.Buffer
-	done := make(chan struct{})
-	go func() { io.Copy(&out, master); close(done) }() // ends with EIO when the child exits
-	master.Write([]byte(answer))
+	done := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(&out, master)
+		done <- copyErr
+	}()
+	if _, err := io.WriteString(master, answer); err != nil {
+		killErr := cmd.Process.Kill()
+		waitErr := cmd.Wait()
+		closeErr := master.Close()
+		return result{}, errors.Join(err, killErr, waitErr, closeErr, <-done)
+	}
 	err = cmd.Wait()
-	master.Close()
-	<-done
+	// A Linux PTY reports EIO after the final slave closes. Drain before closing
+	// the master so we do not discard the child's last output.
+	copyErr := <-done
+	closeErr := master.Close()
+	if copyErr != nil && !errors.Is(copyErr, syscall.EIO) {
+		return result{}, errors.Join(copyErr, closeErr)
+	}
+	if closeErr != nil {
+		return result{}, closeErr
+	}
 	code := 0
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {

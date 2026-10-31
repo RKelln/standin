@@ -27,6 +27,8 @@ const (
 	Windows1252 = "Windows-1252"
 )
 
+const reasonImage = "an image"
+
 // win1252 maps bytes 0x80 to 0x9F. Zero means the byte is not used in Windows-1252.
 var win1252 = [32]rune{
 	0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
@@ -43,9 +45,9 @@ var magic = []struct {
 	{"%PDF", "a PDF"},
 	{"PK\x03\x04", "a zipped file (like Excel .xlsx or Word .docx)"},
 	{"\xD0\xCF\x11\xE0", "an old Office file (like .xls or .doc)"},
-	{"\x89PNG", "an image"},
-	{"\xFF\xD8\xFF", "an image"},
-	{"GIF8", "an image"},
+	{"\x89PNG", reasonImage},
+	{"\xFF\xD8\xFF", reasonImage},
+	{"GIF8", reasonImage},
 }
 
 // Sniff returns a description if the bytes look like a known binary file.

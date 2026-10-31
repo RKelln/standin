@@ -55,7 +55,7 @@ func withDescriptor(dir bool, apply func(uintptr) error) error {
 	if err != nil {
 		return permissionError()
 	}
-	defer token.Close()
+	defer func() { _ = token.Close() }() // Query-only token; closing cannot change the ACL result.
 	user, err := token.GetTokenUser()
 	if err != nil {
 		return permissionError()
@@ -77,7 +77,7 @@ func withDescriptor(dir bool, apply func(uintptr) error) error {
 	if ok == 0 {
 		return permissionError()
 	}
-	defer syscall.LocalFree(syscall.Handle(descriptor))
+	defer func() { _, _ = syscall.LocalFree(syscall.Handle(descriptor)) }() // Only frees the local descriptor buffer.
 	return apply(descriptor)
 }
 
@@ -95,7 +95,7 @@ func secureFile(path string, f *os.File) error {
 		return permissionError()
 	}
 	check := os.NewFile(uintptr(h), path)
-	defer check.Close()
+	defer func() { _ = check.Close() }() // Metadata/ACL handle only; private bytes use f and its checked close.
 	a, err := f.Stat()
 	if err != nil {
 		return permissionError()

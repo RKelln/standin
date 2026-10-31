@@ -616,3 +616,27 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     release verification now invoke `go mod tidy -diff` (or `tidy-check`). Why: decision 73 promised
     the check in CI, but only the local Make target actually ran it. Vendored offline builds and the
     separate check for linked network packages remain required.
+83. **Keep intended language and complete messages.** Repeated category and shape labels use named
+    constants. The spelling check allows the Canadian and French forms used by commands, fixtures
+    and input recognition. Punctuation checks have narrow exceptions for complete user-facing
+    validation messages. Why: changing `licences`, `cheque` or French field words to satisfy a US
+    dictionary would alter the interface or supported inputs, while sentence punctuation helps
+    readers. No linter is disabled wholesale.
+84. **Printing is part of a command's result.** Stdout and stderr remember write errors and short
+    writes; a failure gives exit 2 with a data-free message. It may happen after files were saved,
+    so the message does not promise nothing changed. Approval checks printing before reading each
+    answer and before saving choices: unseen prompts cannot grant approval. Hook output failures
+    also block. Why: ignored writes could claim success for a partial result or accept blind answers.
+85. **Cleanup failures are different from harmless resource closes.** Check failed temporary-file
+    cleanup, lock release, file sync and publication errors; retain unfinished-save state when
+    rollback cleanup fails. Give safe recovery guidance without private paths. Read-only directory
+    pins and embedded readers have explicit best-effort closes where no write can be lost. Optional
+    error logging preserves the original refusal, but reports failure to release its lock. Why:
+    swallowing a failed release can leave the next command blocked, and swallowing rollback cleanup
+    can misrepresent recovery. These checks still do not prove power-loss durability.
+86. **Best-effort reports and wrapped refusal codes are deliberate.** Report keeps collecting kinds
+    and shapes after unreadable entries and skips unsupported shapes, rather than failing the whole
+    issue report. Those two callback returns have local lint explanations. Refusal codes survive
+    ordinary error wrapping and joins, so reports keep their useful data-free category. Terminal
+    tests accept Linux's expected end-of-terminal EIO, check other I/O failures and drain the last
+    output before closing the terminal.

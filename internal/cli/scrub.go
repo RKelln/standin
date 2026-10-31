@@ -19,6 +19,11 @@ import (
 	"github.com/RKelln/standin/internal/words"
 )
 
+const (
+	categoryValue     = "VALUE"
+	planSourceDefault = "default"
+)
+
 // plan is what scrub will do with one column.
 type plan struct {
 	action   string
@@ -198,7 +203,7 @@ func (c *ctx) prepare(cfg *config.Config, files []rawFile, m *mapping.Mapping, c
 	defer func() {
 		c.env.Stderr = stderr
 		if err == nil {
-			fmt.Fprint(stderr, messages.String())
+			_, _ = fmt.Fprint(stderr, messages.String())
 		}
 	}()
 	r := &run{m: m, choices: ch}
@@ -219,7 +224,7 @@ func (c *ctx) prepare(cfg *config.Config, files []rawFile, m *mapping.Mapping, c
 		for _, values := range sf.d.Values {
 			for _, value := range values {
 				if strings.TrimSpace(value) != "" {
-					names.Get("VALUE", value)
+					names.Get(categoryValue, value)
 				}
 			}
 		}
@@ -250,7 +255,7 @@ func (c *ctx) prepare(cfg *config.Config, files []rawFile, m *mapping.Mapping, c
 			}
 			cat := p.category
 			if cat == "" {
-				cat = "VALUE"
+				cat = categoryValue
 			}
 			field := sf.d.Kind == dataset.Text && sf.d.Source[col] == dataset.FromField
 			for _, v := range sf.d.Values[col] {
@@ -633,12 +638,12 @@ func (c *ctx) planColumns(cfg *config.Config, sf *scrubFile) error {
 		case found:
 			p = plan{col.Action, col.Category, "config"}
 		case name == dataset.KeyColumn:
-			p = plan{config.Tokenize, "KEY", "default"}
+			p = plan{config.Tokenize, "KEY", planSourceDefault}
 		case infos[i].LooksFreeText():
 			p = plan{config.Drop, "", "free text"}
 			c.warn("%s: column %s reads like free text and is not in the config, so I dropped it. To keep some of it, add it to the config with \"scan\".", show(f.rel), label)
 		default:
-			p = plan{config.Tokenize, "VALUE", "default"}
+			p = plan{config.Tokenize, categoryValue, planSourceDefault}
 		}
 		sf.plans = append(sf.plans, p)
 	}
@@ -688,7 +693,7 @@ func (c *ctx) planText(rule *config.File, sf *scrubFile) error {
 			p = plan{config.Drop, "", "free text"}
 			c.warn("%s: %s reads like free text and is not in the config, so I dropped it. To keep some of it, add it to the config with \"scan\".", show(f.rel), what)
 		default:
-			p = plan{config.Tokenize, "VALUE", "default"}
+			p = plan{config.Tokenize, categoryValue, planSourceDefault}
 		}
 		sf.plans = append(sf.plans, p)
 	}

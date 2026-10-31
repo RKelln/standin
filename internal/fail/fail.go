@@ -12,7 +12,8 @@ import (
 	"os"
 )
 
-// Error is a refusal: Standin stops, writes nothing, and exits 2.
+// Error stops a command with exit 2. Bad input refuses before publication;
+// save, cleanup or printing failures may happen after files were saved.
 type Error struct {
 	Code string // short, data-free, for `standin report`
 	Msg  string // plain words for the person
@@ -27,7 +28,8 @@ func New(code, format string, args ...any) *Error {
 
 // Code returns the code of err if it is a refusal, or "error" if not.
 func Code(err error) string {
-	if e, ok := err.(*Error); ok {
+	var e *Error
+	if errors.As(err, &e) && e != nil {
 		return e.Code
 	}
 	return "error"

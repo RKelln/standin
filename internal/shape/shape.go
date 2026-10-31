@@ -18,6 +18,17 @@ import (
 	"github.com/RKelln/standin/internal/scan"
 )
 
+const (
+	shapeDateAndTime = "date and time"
+	shapeYesNo       = "yes/no"
+	shapeDigits      = "digits"
+	shapeFreeText    = "free text"
+	kindDate         = "date"
+	kindText         = "text"
+	headerFlagEmpty  = "empty"
+	kindEmpty        = "empty"
+)
+
 // CountBand gives a count as a band. Zero is "none".
 func CountBand(n int) string {
 	switch {
@@ -99,7 +110,7 @@ func Describe(v string) string {
 	case reISODate.MatchString(t):
 		return "date YYYY-MM-DD"
 	case reISOTime.MatchString(t):
-		return "date and time"
+		return shapeDateAndTime
 	case reYMDSlash.MatchString(t):
 		return "date YYYY/MM/DD"
 	case reSlashDate.MatchString(t):
@@ -107,7 +118,7 @@ func Describe(v string) string {
 	case reWordDate.MatchString(t):
 		return "date in words"
 	case reYesNo.MatchString(t):
-		return "yes/no"
+		return shapeYesNo
 	}
 	if m := reAmount.FindStringSubmatch(t); m != nil {
 		n := len(m[1])
@@ -123,7 +134,7 @@ func Describe(v string) string {
 		return "phone-like"
 	}
 	if reDigits.MatchString(t) {
-		return "digits"
+		return shapeDigits
 	}
 	if rePostal.MatchString(t) {
 		return "postal-code-like"
@@ -148,7 +159,7 @@ func Describe(v string) string {
 		}
 	}
 	if utf8.RuneCountInString(t) > 40 || len(words) >= 5 {
-		return "free text"
+		return shapeFreeText
 	}
 	if len(words) == 1 && reLetDig.MatchString(t) && hasLetter(t) && hasDigit(t) {
 		return "letters and digits"
@@ -178,13 +189,13 @@ func hasDigit(s string) bool {
 }
 
 var kindOf = map[string]string{
-	"email-like": "email", "date YYYY-MM-DD": "date", "date and time": "date and time",
-	"date YYYY/MM/DD": "date", "date NN/NN/YYYY": "date", "date in words": "date",
-	"yes/no": "yes/no", "amount, no decimals": "amount", "phone-like": "phone",
-	"digits": "number or ID", "postal-code-like": "postal code",
+	"email-like": "email", "date YYYY-MM-DD": kindDate, shapeDateAndTime: shapeDateAndTime,
+	"date YYYY/MM/DD": kindDate, "date NN/NN/YYYY": kindDate, "date in words": kindDate,
+	shapeYesNo: shapeYesNo, "amount, no decimals": "amount", "phone-like": "phone",
+	shapeDigits: "number or ID", "postal-code-like": "postal code",
 	"one capitalised word": "name-like word", "two capitalised words": "name-like",
-	"capitalised words": "name-like", "free text": "free text",
-	"letters and digits": "code or ID", "words": "text", "other text": "text",
+	"capitalised words": "name-like", shapeFreeText: shapeFreeText,
+	"letters and digits": "code or ID", "words": kindText, "other text": kindText,
 }
 
 // Kind returns a plain kind word for a shape string.
@@ -195,7 +206,7 @@ func Kind(shape string) string {
 	if k, ok := kindOf[shape]; ok {
 		return k
 	}
-	return "text"
+	return kindText
 }
 
 // ColumnInfo is the shape of one column.
@@ -231,7 +242,7 @@ func Label(name string, index int) (label, flag string) {
 		return fmt.Sprintf("[COLUMN_%d]", index+1), kind
 	}
 	if name == "" {
-		return fmt.Sprintf("[COLUMN_%d]", index+1), "empty"
+		return fmt.Sprintf("[COLUMN_%d]", index+1), headerFlagEmpty
 	}
 	return name, ""
 }
@@ -283,7 +294,7 @@ func Columns(d *dataset.Dataset) []ColumnInfo {
 		if len(ci.Shapes) > 0 {
 			ci.Kind = Kind(ci.Shapes[0].Shape)
 		} else {
-			ci.Kind = "empty"
+			ci.Kind = kindEmpty
 		}
 		if len(ci.Shapes) > 3 {
 			ci.Shapes = ci.Shapes[:3]
@@ -358,8 +369,8 @@ func Markdown(d *dataset.Dataset, shownPath, version string) string {
 func writeColumn(b *strings.Builder, c ColumnInfo) {
 	if c.HeaderFlag != "" {
 		what := map[string]string{"email": "an email address", "phone": "a phone number", "digits": "a number",
-			"name": "a person's name", "empty": "nothing (the header is blank)"}[c.HeaderFlag]
-		if c.HeaderFlag == "empty" {
+			"name": "a person's name", headerFlagEmpty: "nothing (the header is blank)"}[c.HeaderFlag]
+		if c.HeaderFlag == headerFlagEmpty {
 			fmt.Fprintf(b, "- Header: blank. In the config, call this column `%s`.\n", c.Label)
 		} else {
 			fmt.Fprintf(b, "- **Header hidden:** it looks like %s, so it may be private data. In the config, call this column `%s`. Standin will swap the header for a stand-in too.\n", what, c.Label)

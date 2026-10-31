@@ -161,7 +161,9 @@ func TestSameNameHintStops(t *testing.T) {
 	home := filepath.Join(base, "home")
 	for _, d := range []string{"a/shop", "b/shop"} {
 		p := &tp{t: t, dir: filepath.Join(base, d), home: home}
-		os.MkdirAll(filepath.Join(p.dir, "raw"), 0o755)
+		if err := os.MkdirAll(filepath.Join(p.dir, "raw"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		p.write("raw/inv.csv", "Customer\nZelda Quorn\n")
 		p.write("standin.config.json", plainCfg)
 		r := p.run("", false, "scrub")

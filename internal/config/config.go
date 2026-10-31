@@ -23,6 +23,8 @@ import (
 	"github.com/RKelln/standin/internal/mapping"
 )
 
+const objectRecordKey = "(key)"
+
 // FileName is the config file name in the project folder.
 const FileName = "standin.config.json"
 
@@ -209,21 +211,21 @@ func checkColumn(name string, col Column) error {
 		if !mapping.ValidCategory(col.Category) {
 			return errors.New(`"category" must be one of ` + strings.Join(mapping.Categories, ", ") + `.`)
 		}
-		if name == "(key)" && col.Category != "KEY" {
+		if name == objectRecordKey && col.Category != "KEY" {
 			return errors.New(`the keys of an object of records use category "KEY".`)
 		}
 	case Drop:
 		if col.Category != "" && !mapping.ValidCategory(col.Category) {
 			return errors.New(`"category" must be one of ` + strings.Join(mapping.Categories, ", ") + `.`)
 		}
-		if name == "(key)" {
+		if name == objectRecordKey {
 			return errors.New(`the keys of an object of records can only be "keep" or "tokenize".`)
 		}
 	case Keep, Scan:
 		if col.Category != "" {
 			return errors.New(`"category" only goes with "tokenize" or "drop".`)
 		}
-		if name == "(key)" && col.Action != Keep {
+		if name == objectRecordKey && col.Action != Keep {
 			return errors.New(`the keys of an object of records can only be "keep" or "tokenize".`)
 		}
 		if _, ok := ColumnRef(name); ok {
@@ -249,7 +251,7 @@ func validGroup(g string) bool {
 // checkTextColumn checks a field or table column rule. The same actions as
 // a column, but no [COLUMN_n] and no (key).
 func checkTextColumn(name string, col Column) error {
-	if _, ok := ColumnRef(name); ok || name == "(key)" {
+	if _, ok := ColumnRef(name); ok || name == objectRecordKey {
 		return errors.New(`use the name shown in the shape file.`)
 	}
 	return checkColumn(name, col)

@@ -21,7 +21,7 @@ import (
 // person's files: no file names, column names or values.
 func runReport(c *ctx) error {
 	w := c.env.Stdout
-	p := func(format string, args ...any) { fmt.Fprintf(w, format+"\n", args...) }
+	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format+"\n", args...) }
 	commit := c.env.Commit
 	if commit == "" {
 		commit = "unknown"
@@ -78,7 +78,7 @@ func runReport(c *ctx) error {
 	root := filepath.Join(c.project, "raw")
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || strings.HasPrefix(d.Name(), ".") {
-			return nil
+			return nil //nolint:nilerr // Reports are best effort: keep describing other files after a walk error.
 		}
 		ext := strings.ToLower(filepath.Ext(d.Name()))
 		if ext == "" {
@@ -88,7 +88,7 @@ func runReport(c *ctx) error {
 		}
 		exts[ext]++
 		if _, err := dataset.KindFor(path); err != nil {
-			return nil
+			return nil //nolint:nilerr // Unsupported kinds are counted above; only readable kinds have a shape.
 		}
 		ds, err := dataset.Load(path)
 		if err != nil {

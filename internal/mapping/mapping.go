@@ -24,9 +24,11 @@ import (
 	"github.com/RKelln/standin/internal/store"
 )
 
+const CategoryName = "NAME"
+
 // Categories are the stand-in categories Standin knows.
 // NAME is a word from free text (a .md or .txt file) that the word check swapped.
-var Categories = []string{"PERSON", "ORG", "EMAIL", "PHONE", "ACCOUNT", "ID", "ADDRESS", "POSTAL", "KEY", "VALUE", "NAME"}
+var Categories = []string{"PERSON", "ORG", "EMAIL", "PHONE", "ACCOUNT", "ID", "ADDRESS", "POSTAL", "KEY", "VALUE", CategoryName}
 
 // ValidCategory reports whether c is a known category.
 func ValidCategory(c string) bool {
@@ -120,7 +122,7 @@ func Parse(b []byte) (*Mapping, error) {
 			return nil, fail.New("mapping-bad", "The mapping file is damaged (a value is listed twice), so I stopped.")
 		}
 		n, err := strconv.Atoi(sm[2])
-		if err != nil || n <= 0 || n > len(f.Entries) || (e.Kept && e.Category != "NAME") {
+		if err != nil || n <= 0 || n > len(f.Entries) || (e.Kept && e.Category != CategoryName) {
 			return nil, fail.New("mapping-bad", "The mapping file is damaged (a bad row), so I stopped.")
 		}
 		for _, spelling := range e.Spellings {
@@ -249,7 +251,7 @@ func (m *Mapping) CountByCategory() []struct {
 // unmarks the others.
 func (m *Mapping) SetKept(keep func(key string) bool) {
 	for i := range m.Entries {
-		if m.Entries[i].Category == "NAME" {
+		if m.Entries[i].Category == CategoryName {
 			m.Entries[i].Kept = keep(m.Entries[i].Key)
 		}
 	}

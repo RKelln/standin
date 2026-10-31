@@ -38,6 +38,9 @@ Agents do not commit; the orchestrator reviews and commits.
 `0` done. `1` done, with warnings or findings (see output). `2` refused or error; read the reason.
 Bad input is refused before output files are written. A save failure may require recovery; it must
 not be described as an all-files atomic transaction.
+Printing errors also give exit 2, including short writes. Files may already have been saved when a
+final message fails. Approval refuses before saving choices if its prompts or instructions could
+not be printed. Hook output failures block the requested action.
 
 ### Project folder
 

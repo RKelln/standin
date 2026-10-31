@@ -9,6 +9,7 @@ import (
 
 	"github.com/RKelln/standin/internal/fail"
 	"github.com/RKelln/standin/internal/mapping"
+	"github.com/RKelln/standin/internal/output"
 	"github.com/RKelln/standin/internal/restore"
 	"github.com/RKelln/standin/internal/scan"
 	"github.com/RKelln/standin/internal/store"
@@ -138,7 +139,9 @@ func runRestore(c *ctx) error {
 	}
 	for _, j := range jobs {
 		if j.out == "" {
-			io.WriteString(c.env.Stdout, j.res.Out)
+			if _, err := io.WriteString(c.env.Stdout, j.res.Out); err != nil {
+				return output.Failure()
+			}
 		} else {
 			r, _ := c.rel(j.out)
 			c.msg("Wrote %s (%d stand-ins put back).", show(r), j.res.Replaced)
@@ -238,7 +241,7 @@ func runVersion(c *ctx) error {
 	if commit == "" {
 		commit = "unknown"
 	}
-	fmt.Fprintf(c.env.Stdout, "standin %s (commit %s)\n", c.version(), commit)
+	_, _ = fmt.Fprintf(c.env.Stdout, "standin %s (commit %s)\n", c.version(), commit)
 	return nil
 }
 
@@ -247,9 +250,9 @@ func runLicences(c *ctx) error {
 	if err != nil {
 		return fail.New("word-lists", "My built-in word lists are damaged. Get a fresh copy of standin.")
 	}
-	fmt.Fprintln(c.env.Stdout, "Standin is MIT licensed (see LICENSE). It uses golang.org/x/text (BSD-3-Clause) for character sets, and has two word lists built in, for the word check on free text:")
-	fmt.Fprintln(c.env.Stdout)
-	fmt.Fprint(c.env.Stdout, n)
-	fmt.Fprintln(c.env.Stdout, "The same notes are in THIRD_PARTY.md, next to the program in each download.")
+	_, _ = fmt.Fprintln(c.env.Stdout, "Standin is MIT licensed (see LICENSE). It uses golang.org/x/text (BSD-3-Clause) for character sets, and has two word lists built in, for the word check on free text:")
+	_, _ = fmt.Fprintln(c.env.Stdout)
+	_, _ = fmt.Fprint(c.env.Stdout, n)
+	_, _ = fmt.Fprintln(c.env.Stdout, "The same notes are in THIRD_PARTY.md, next to the program in each download.")
 	return nil
 }

@@ -20,6 +20,17 @@ linters:
       min-occurrences: 3
     misspell:
       locale: US
+      # Supported Canadian and French forms used in examples and UI text.
+      ignore-rules:
+        - licence
+        - licences
+        - cheque
+        - cheques
+        - organisation
+        - organisations
+        - organiser
+        - organisers
+        - quantite
     revive:
       rules:
         - name: blank-imports
@@ -33,6 +44,23 @@ linters:
     rules:
       - linters: [unparam, goconst]
         path: _test\.go
+      # Keep complete, user-facing validation messages as written; punctuation
+      # and casing make these messages easier to read as full sentences.
+      - linters: [revive]
+        path: internal/config/config\.go
+        text: error strings should not be capitalized or end with punctuation or a newline
+      # Staticcheck's ST1005 objects to sentence-ending punctuation, which we
+      # keep in the complete validation messages in this file.
+      - linters: [staticcheck]
+        path: internal/config/config\.go
+        text: error strings should not end with punctuation or newlines
+      # These AGENTS.md instructions are also shown as complete messages.
+      - linters: [revive]
+        path: internal/initcmd/texts\.go
+        text: error strings should not be capitalized or end with punctuation or a newline
+      - linters: [staticcheck]
+        path: internal/initcmd/texts\.go
+        text: error strings should not end with punctuation or newlines
 
 formatters:
   enable:
