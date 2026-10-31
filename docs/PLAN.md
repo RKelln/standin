@@ -185,7 +185,7 @@ share, distinct count as a band (`under 5`, `5-20`, `21-100`, `over 100`), lengt
 `amount 2 decimals`, `two capitalised words`, `digits`, `letters and digits`, `free text`) with count
 bands. Never a real value, never an exact length or count below 5. Ends with a short "how to write the
 config" note and the config schema above. The file name is shape-checked too: if it looks like data, the
-shape file uses `file_n` and says to rename the raw file.
+whole shape run refuses before writing and asks the person to rename the raw file.
 
 ### Restore
 
@@ -205,9 +205,10 @@ restore uses strict quoting and row widths. A fragment can be restored explicitl
    `restored/a/b.md`; a file outside `scrubbed/` -> `restored/<base name>`.
 2. `scrub` of many files runs in two passes: tokenize columns of every file first, then `scan` columns,
    so a name met in a later file is still known.
-3. Exit codes: `shape` 0, or 1 if it flagged a header or file name. `scrub` 0 when approved and clean,
+3. Exit codes: `shape` 0, 1 for warnings such as flagged headers, or 2 for refusal, including private
+   filenames. `scrub` 0 when approved and clean,
    2 when a needed approval is missing.
-   A config with no `keep` and no `scan` needs no approval.
+   A config with no `keep`, no `scan` and no word check needs no approval.
 4. Restore and check reports go to stderr; stdout carries only the restored text (for `-`). `restore -`
    refuses (exit 2) when stdout is not a terminal: restore is for the person, not the agent.
 5. `approve` lists every kept column in one question per file rule, and every scanned column in another,
@@ -218,7 +219,7 @@ restore uses strict quoting and row widths. A fragment can be restored explicitl
 7. No `standin.config.json`: `scrub` refuses (exit 2), "run standin shape, then write a config".
 8. Free-text rule: average over non-empty cells.
 9. A file name that looks like data (any folder, or the full file name with or without its extension, or
-   any dot-separated part): `shape` writes `file_n` and says rename; `scrub` refuses it (exit 2).
+   any dot-separated part): `shape` and `scrub` refuse it (exit 2) and ask the person to rename it.
    Messages, errors (OS errors are reduced to their cause, without the path), logs and the report never
    print such a name; the report names only common extensions, others as `(other)`.
 10. Binary content (NUL bytes, `PK`/`%PDF` magic) is refused whatever the extension.
@@ -233,7 +234,9 @@ restore uses strict quoting and row widths. A fragment can be restored explicitl
     already in the mapping.
 15. Filenames also get the single-word header check. Shape checks names against the batch's values in
     memory; scrub checks against known tokenized/dropped values before printing preparation messages.
-    A flagged filename is hidden in shape output and refused by scrub. This is not complete name detection.
+    A flagged filename is refused by shape and scrub. Parse errors may echo an explicitly supplied
+    filename if it passes the standalone filename check; batch parse errors hide filenames. This is
+    not complete name detection.
 16. Config and private JSON readers refuse duplicate fields, trailing values, malformed Unicode and
     inconsistent private mapping rows, counter overflow and missing stand-in rows.
 17. Terminal checks use the OS terminal/console query. A pseudo-terminal is not proof of a person.
@@ -304,20 +307,25 @@ above unchanged; there is no separate config language and no new command.
 - **Rendered form:** `From`, `To`, `Cc`, `Date`, `Subject` as `Label: value` lines, one `To`/`Cc` line
   per address, then a blank line and the body. Header values are unfolded and RFC 2047 encoded words
   (`=?UTF-8?Q?...?=`) are decoded. Other headers are not shown.
-- **Body:** the first `text/plain` parts are used, joined in order. If a message has no plain part, the
-  `text/html` parts are converted to text (styles, scripts, comments and tags dropped, entities
-  decoded, `<br>` and block ends become line breaks). Links and images are dropped.
-- **Encodings:** `base64`, `quoted-printable`, `7bit`, `8bit` and `binary`. Character sets: UTF-8,
-  US-ASCII and the ISO-8859-1/Windows-1252 family are read as before (valid UTF-8 wins over a wrong
-  label); every other name is decoded through `golang.org/x/text` (Shift-JIS, KOI8-R, GB2312,
-  ISO-2022-JP and the rest). A name nothing knows is refused rather than guessed at.
-- **Attachments:** counted and never opened. `multipart/*` recurses (depth 6, 200 parts);
+- **Body:** choose plain text within each `multipart/alternative`; otherwise use its HTML text view.
+  Independent mixed body parts and forwarded messages are kept in order. HTML is converted to text
+  (styles, scripts, comments and tags dropped, entities decoded, `<br>` and block ends become line
+  breaks). Links and images are dropped. Unsupported structures refuse rather than drop body text.
+- **Encodings:** `base64`, `quoted-printable`, `7bit`, `8bit` and `binary`. Declared character sets
+  are honored, including the distinction between ISO-8859-1, ISO-8859-15 and Windows-1252. Only
+  missing charset labels use the ordinary UTF-8/Windows-1252 file fallback. Other known names use
+  `golang.org/x/text` (Shift-JIS, KOI8-R, GB2312, ISO-2022-JP and the rest). Unknown labels and
+  malformed decoding refuse with data-free errors. A decoded replacement character must be literal
+  input, not recovery from broken bytes; noncanonical encodings containing it may conservatively refuse.
+- **Attachments:** counted and never opened, including entire multipart attachment containers.
+  Other `multipart/*` recurses (depth 6, 200 parts);
   `message/rfc822` is read as a forwarded message, with its own From/To/Date/Subject lines kept.
 - **Refusals (exit 2, nothing written):** an mbox file, no blank line between headers and body, a header
   line that is not `Name: value`, a body part with no readable text, an unknown character set or
   transfer encoding, broken base64, a multipart body with no boundary or no closing boundary.
 - **Checked against a mature reader, in the tests only.** `github.com/emersion/go-message` reads the
-  same fixtures in `internal/dataset/oracle_test.go` and the two readings must agree word for word. It
+  synthetic fixtures in `internal/dataset/oracle_test.go`; comparisons include decoded headers,
+  body text, numbers and currency symbols. This covers the fixtures, not all valid mail. It
   links `net`, so it is never linked into the program (DESIGN 75).
 - **The trimmed copy is a view.** `scrubbed/<name>.eml` is the rendered text, not the original message
   file: MIME structure, formatting and attachments are not kept. `restore` writes the same view with the
@@ -328,7 +336,7 @@ above unchanged; there is no separate config language and no new command.
 1. Now: R (running), A, C, D in parallel.
 2. When R lands: fold findings into `DESIGN.md` Decisions; brief B (hooks: Claude Code first, then Codex,
    OpenCode; `standin init`; skill text including "report issues with `standin report`").
-3. V: fresh review, then fixes. Then success checks run and recorded in `HANDOFF.md`.
+3. V: fresh review, then fixes, then run the success checks.
 4. Release v0.1.0 for the workshop; Ryan tests the curl install on the Mac mini.
 
 ## v0.2 (2026-10-30, from the Get2Know trial)

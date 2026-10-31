@@ -324,6 +324,45 @@ func (g Guard) Covers(dir, cwd string) Zone {
 	return ZoneNone
 }
 
+// safeScrubbedTwin refuses protected targets and links anywhere under the
+// project, including the scrubbed root itself. The hook hands a path to
+// another program, so this check is a safety net, not protection against
+// someone changing that path after the hook returns.
+func (g Guard) safeScrubbedTwin(p string) bool {
+	if g.ZoneOf(p, g.Project) != ZoneNone {
+		return false
+	}
+	base := filepath.Join(g.Project, ScrubbedDir)
+	if !within(p, base) || norm(p) == norm(base) {
+		return false
+	}
+	rel, err := filepath.Rel(g.Project, p)
+	if err != nil {
+		return false
+	}
+	r, err := os.OpenRoot(g.Project)
+	if err != nil {
+		return false
+	}
+	defer r.Close()
+	parts := strings.Split(rel, string(filepath.Separator))
+	cur := ""
+	for i, part := range parts {
+		cur = filepath.Join(cur, part)
+		st, err := r.Lstat(cur)
+		if err != nil || st.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+		if i == len(parts)-1 {
+			return st.Mode().IsRegular()
+		}
+		if !st.IsDir() {
+			return false
+		}
+	}
+	return false
+}
+
 // ScrubbedFor maps a path under raw/ to its scrubbed/ twin.
 func (g Guard) ScrubbedFor(p, cwd string) (string, bool) {
 	a := g.abs(p, cwd)

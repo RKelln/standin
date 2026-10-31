@@ -3,12 +3,64 @@ package textenc
 import (
 	"strings"
 	"testing"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 func TestUTF8(t *testing.T) {
 	text, enc, err := Decode([]byte("Name\nZoë Testperson\n"))
 	if err != nil || enc != UTF8 || text != "Name\nZoë Testperson\n" {
 		t.Fatalf("got %q %q %v", text, enc, err)
+	}
+}
+
+func TestDeclaredCharsetIsHonored(t *testing.T) {
+	for _, tc := range []struct{ name, bytes, want string }{
+		{"iso-8859-15", "Amount due: \xa4100.00.", "Amount due: €100.00."},
+		{"iso-8859-1", "Amount due: \xa4100.00.", "Amount due: ¤100.00."},
+		{"windows-1252", "Amount due: \x80100.00.", "Amount due: €100.00."},
+		{"iso-8859-1", "\xc3\xa9", "Ã©"},
+		{"utf-8", "literal \ufffd text", "literal \ufffd text"},
+		{"utf-16be", "\x00a\xff\xfd\x00b", "a\ufffdb"},
+	} {
+		t.Run(tc.name+tc.bytes, func(t *testing.T) {
+			got, err := DecodeCharset([]byte(tc.bytes), tc.name)
+			if err != nil || got != tc.want {
+				t.Fatalf("got %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+	// GB18030 can also represent a literal replacement rune. It must not be
+	// confused with decoder recovery from malformed input.
+	b, err := simplifiedchinese.GB18030.NewEncoder().Bytes([]byte("a\ufffdb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := DecodeCharset(b, "gb18030"); err != nil || got != "a\ufffdb" {
+		t.Fatalf("literal GB18030 replacement rune: %q, %v", got, err)
+	}
+}
+
+func TestMalformedDeclaredCharsetRefusesWithoutData(t *testing.T) {
+	for _, tc := range []struct{ name, bytes string }{
+		{"shift_jis", "private \x82"},
+		{"shift_jis", "private \x82\x20"},
+		{"utf-8", "private \xff"},
+		{"us-ascii", "private \xe9"},
+		{"utf-16be", "\xd8\x00"},
+		{"windows-1252", "private \x81"},
+		{"gb18030", "private \x81\x30"},
+		{"ZeldaQuorn", "private"},
+	} {
+		t.Run(tc.name+tc.bytes, func(t *testing.T) {
+			got, err := DecodeCharset([]byte(tc.bytes), tc.name)
+			if err == nil || got != "" {
+				t.Fatalf("got %q, %v; want refusal with no output", got, err)
+			}
+			if strings.Contains(err.Error(), "Zelda") || strings.Contains(err.Error(), "private") {
+				t.Fatalf("error contains data: %v", err)
+			}
+		})
 	}
 }
 

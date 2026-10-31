@@ -1,5 +1,8 @@
 # What Get2Know needs from Standin (notes, 2026-10-30)
 
+Historical trial notes and requests; some were changed or declined. For current behavior, see
+[`PLAN.md`](PLAN.md) and the decisions in [`DESIGN.md`](DESIGN.md).
+
 From a trial of Standin `main` (just after v0.1.0) on a copy of Get2Know's made-up bike-shop folder. The Get2Know side is in `get2know/docs/research/standin.md`. Get2Know's interviewer would read the owner's records through `scrubbed/`. The owner's chat with it is not filtered.
 
 Ordered by how much each blocks the integration.

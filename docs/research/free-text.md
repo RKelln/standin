@@ -1,5 +1,8 @@
 # Free text: approve words, not columns (research, 2026-10-30)
 
+Historical research and prototype proposals. For current behavior and commands, use
+[`../PLAN.md`](../PLAN.md) and the later decisions in [`../DESIGN.md`](../DESIGN.md).
+
 Track F. This checks the "approve words" proposal for `.md`, `.txt` and email, using numbers from a
 prototype. The prototype is scratch code outside the repo (Python, about 200 lines). It reads the trial's
 invented bike-shop files and some larger invented corpora that a script made.

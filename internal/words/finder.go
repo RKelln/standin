@@ -77,24 +77,26 @@ var (
 // several meaningless candidates ("AQH", "JzLm", "Pq" out of one id) and
 // several decisions for the person (decision 72).
 func Tokens(s string) [][2]int {
-	words := wordSpans(s)
 	runs := encodedRuns(s)
 	if len(runs) == 0 {
-		return words
+		return wordSpans(s)
 	}
-	out := make([][2]int, 0, len(words))
-	ri := 0
-	for _, w := range words {
-		for ri < len(runs) && runs[ri][1] <= w[0] {
-			out = append(out, runs[ri])
-			ri++
+	// Find words only in the gaps. A hyphenated word can cross the start
+	// or end of a run; adding whole word spans would overlap that run.
+	var out [][2]int
+	pos := 0
+	gap := func(end int) {
+		for _, w := range wordSpans(s[pos:end]) {
+			out = append(out, [2]int{pos + w[0], pos + w[1]})
 		}
-		if ri < len(runs) && w[0] >= runs[ri][0] && w[0] < runs[ri][1] {
-			continue // inside an encoded run: the run is the token
-		}
-		out = append(out, w)
 	}
-	return append(out, runs[ri:]...)
+	for _, run := range runs {
+		gap(run[0])
+		out = append(out, run)
+		pos = run[1]
+	}
+	gap(len(s))
+	return out
 }
 
 // runsRe finds a run of at least 12 characters from the alphabet of encoded
@@ -126,8 +128,12 @@ func encodedRuns(s string) [][2]int {
 
 // wordSpans returns the spans of words in s.
 func wordSpans(s string) [][2]int {
-	var out [][2]int
-	for _, loc := range wordRe.FindAllStringIndex(s, -1) {
+	locs := wordRe.FindAllStringIndex(s, -1)
+	if len(locs) == 0 {
+		return nil
+	}
+	out := make([][2]int, 0, len(locs))
+	for _, loc := range locs {
 		out = append(out, [2]int{loc[0], loc[1]})
 	}
 	return out
@@ -332,10 +338,10 @@ func (f *Finder) addLine(line, prevLine string) {
 			f.add(w, KnownName, line, a, b, counted)
 			hit = true
 		}
-		if cpt && !noise[lw] && !(calendar[k] && (prevw == "from" || prevw == "by" || prevw == "with" || prevw == "per")) {
+		if cpt && !noise[lw] && (!calendar[k] || (prevw != "from" && prevw != "by" && prevw != "with" && prevw != "per")) {
 			spot := (greet[prevw] && (between == "" || between == ",")) ||
 				(titles[prevw] && (between == "" || between == ".")) ||
-				(nameIntr.MatchString(before) && !(calendar[k] && weakIntr.MatchString(before)))
+				(nameIntr.MatchString(before) && (!calendar[k] || !weakIntr.MatchString(before)))
 			if spot {
 				f.add(w, NameSpot, line, a, b, counted)
 				hit = true

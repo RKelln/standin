@@ -6,7 +6,7 @@ package dataset
 // The scrub copy is a readable view, not the original message file: the MIME
 // structure, the HTML and any attachment are not kept. Restore writes the same
 // view back with the real values in place. The original .eml is never changed.
-// This keeps the standard-library-only, offline, plain-text contract: no MIME
+// This keeps the offline, plain-text contract: no MIME
 // reader from net/mail or mime/multipart, because both link the net package.
 
 import (
@@ -60,21 +60,21 @@ func RenderEmail(b []byte) (string, *EmailInfo, error) {
 	}
 	info := &EmailInfo{}
 	w := &messageWalker{info: info}
-	if err := w.walk(hdr, body, 0); err != nil {
+	result, err := w.walk(hdr, body, 0)
+	if err != nil {
 		return "", nil, err
 	}
-	if len(w.plain) == 0 && len(w.html) > 0 {
-		info.FromHTML = true
-		for _, h := range w.html {
-			w.plain = append(w.plain, HTMLToText(h))
-		}
-	}
-	text := strings.Join(w.plain, "\n\n")
+	info.FromHTML = result.fromHTML
+	text := result.text
 	text = strings.TrimRight(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 	if strings.TrimSpace(text) == "" {
 		return "", nil, fail.New("email-empty", "This message has no text I can read. It may hold only an attachment or an image. Save the text you need in a .txt file, or remove private details by hand.")
 	}
-	return renderMessage(hdr, text), info, nil
+	rendered, err := renderMessage(hdr, text)
+	if err != nil {
+		return "", nil, err
+	}
+	return rendered, info, nil
 }
 
 // mboxFrom matches the separator line an mbox file puts before each message:
@@ -157,116 +157,149 @@ func looksLikeMessage(hdr map[string][]string) bool {
 	return false
 }
 
-// messageWalker collects the readable text of a message and counts what it
-// could not read.
+// messageWalker reads one MIME subtree at a time. Only multipart/alternative
+// chooses between representations; mixed parts and forwarded messages retain
+// their own bodies, even when another part happens to contain plain text.
 type messageWalker struct {
 	info  *EmailInfo
-	plain []string
-	html  []string
 	parts int
 }
 
-func (w *messageWalker) walk(hdr map[string][]string, body string, depth int) error {
+type messageText struct {
+	text     string
+	plain    bool
+	fromHTML bool
+}
+
+func (w *messageWalker) walk(hdr map[string][]string, body string, depth int) (messageText, error) {
+	empty := messageText{}
 	if depth > MaxDepth {
-		return fail.New("email-structure", "This message nests parts too deeply for me to follow safely. Save the message you need as a .txt file, then try again.")
+		return empty, fail.New("email-structure", "This message nests parts too deeply for me to follow safely. Save the message you need as a .txt file, then try again.")
 	}
 	w.parts++
 	if w.parts > MaxParts {
-		return fail.New("email-structure", "This message has too many parts for me to follow safely. Save the part you need as a .txt file, then try again.")
+		return empty, fail.New("email-structure", "This message has too many parts for me to follow safely. Save the part you need as a .txt file, then try again.")
 	}
 	w.info.Parts++
+	// Disposition belongs to the entire entity, including a multipart container
+	// (RFC 2183 section 2.9). Do not parse or decode an attachment's contents.
+	if raw := first(hdr, "content-disposition"); raw != "" {
+		disposition, _, err := mime.ParseMediaType(raw)
+		if err != nil {
+			return empty, fail.New("email-structure", "This message has an attachment header I cannot read. Save it as .eml again, then try again.")
+		}
+		if strings.EqualFold(disposition, "attachment") {
+			w.info.Attachments++
+			return empty, nil
+		}
+	}
 	mediaType, params, err := contentType(hdr)
 	if err != nil {
-		return err
+		return empty, err
 	}
 	cte := first(hdr, "content-transfer-encoding")
-	isAttachment := strings.HasPrefix(strings.ToLower(strings.TrimSpace(first(hdr, "content-disposition"))), "attachment")
-
 	if strings.HasPrefix(mediaType, "multipart/") {
+		// MIME multipart containers cannot be transfer-encoded (RFC 2045 6.4).
+		switch strings.ToLower(strings.TrimSpace(cte)) {
+		case "", "7bit", "8bit", "binary":
+		default:
+			return empty, fail.New("email-encoding", "This message has a multi-part form I cannot read. Save it as .eml again, then try again.")
+		}
 		boundary := params["boundary"]
 		if boundary == "" {
-			return fail.New("email-structure", "This message says it has several parts, but does not say how they are separated. Save the message as .eml again, then try again.")
+			return empty, fail.New("email-structure", "This message says it has several parts, but does not say how they are separated. Save the message as .eml again, then try again.")
 		}
 		parts, err := splitMultipart(body, boundary)
 		if err != nil {
-			return err
+			return empty, err
 		}
+		var children []messageText
 		for _, part := range parts {
-			ph, pb, err := splitMessage(part)
-			if err != nil {
-				// A part that is only text (no header lines) is read as it is.
-				ph, pb = "", part
+			var ph, pb string
+			if strings.HasPrefix(part, "\n") {
+				// A MIME part may have an empty header block.
+				pb = part[1:]
+			} else {
+				ph, pb, err = splitMessage(part)
+				if err != nil {
+					return empty, err
+				}
 			}
 			phdr, err := parseHeaders(ph)
 			if err != nil {
-				return err
+				return empty, err
 			}
-			if len(phdr) == 0 {
-				// No header lines: read it as a plain text part.
-				phdr = map[string][]string{"content-type": {"text/plain"}}
-				pb = part
+			child, err := w.walk(phdr, pb, depth+1)
+			if err != nil {
+				return empty, err
 			}
-			if err := w.walk(phdr, pb, depth+1); err != nil {
-				return err
+			if strings.TrimSpace(child.text) != "" {
+				children = append(children, child)
 			}
 		}
-		return nil
-	}
-
-	if isAttachment {
-		w.info.Attachments++
-		return nil
+		if mediaType == "multipart/alternative" {
+			// Prefer a plain representation in this subtree only. Decode every part
+			// first so a malformed unused representation still fails closed.
+			for _, child := range children {
+				if child.plain {
+					return child, nil
+				}
+			}
+			if len(children) > 0 {
+				return children[0], nil
+			}
+			return empty, nil
+		}
+		var texts []string
+		result := empty
+		for _, child := range children {
+			texts = append(texts, child.text)
+			result.plain = result.plain || child.plain
+			result.fromHTML = result.fromHTML || child.fromHTML
+		}
+		result.text = strings.Join(texts, "\n\n")
+		return result, nil
 	}
 	switch mediaType {
-	case "text/plain":
+	case "text/plain", "text/html":
 		text, err := decodePart(body, cte, params["charset"])
 		if err != nil {
-			return err
+			return empty, err
 		}
-		w.plain = append(w.plain, text)
-	case "text/html":
-		text, err := decodePart(body, cte, params["charset"])
-		if err != nil {
-			return err
+		if mediaType == "text/html" {
+			return messageText{text: HTMLToText(text), fromHTML: true}, nil
 		}
-		w.html = append(w.html, text)
+		return messageText{text: text, plain: true}, nil
 	case "message/rfc822":
-		inner, innerBody, ok := forwarded(body)
-		if !ok {
-			w.info.Attachments++
-			return nil
+		raw, err := decodeTransfer(body, cte)
+		if err != nil {
+			return empty, err
 		}
-		// Keep the forwarded message's own fields, so the person and the AI
-		// still see who wrote it.
-		var b strings.Builder
-		b.WriteString("--- Forwarded message ---\n")
-		for _, h := range []string{"From", "To", "Date", "Subject"} {
-			for _, v := range headerValues(inner, h) {
-				fmt.Fprintf(&b, "%s: %s\n", h, v)
-			}
+		head, innerBody, err := splitMessage(string(raw))
+		if err != nil {
+			return empty, err
 		}
-		b.WriteString("\n")
-		w.plain = append(w.plain, b.String())
-		return w.walk(inner, innerBody, depth+1)
+		inner, err := parseHeaders(head)
+		if err != nil {
+			return empty, err
+		}
+		if !looksLikeMessage(inner) {
+			return empty, fail.New("email-structure", "This message holds a forwarded message I cannot read. Save it as .eml again, then try again.")
+		}
+		result, err := w.walk(inner, innerBody, depth+1)
+		if err != nil {
+			return empty, err
+		}
+		rendered, err := renderMessage(inner, result.text)
+		if err != nil {
+			return empty, err
+		}
+		result.text = "--- Forwarded message ---\n" + rendered
+		return result, nil
 	default:
 		w.info.Attachments++
+		return empty, nil
 	}
-	return nil
-}
-
-// forwarded reads the message inside a message/rfc822 part. A part that is
-// not a readable message is counted as an attachment, not refused: the rest of
-// the mail is still worth reading.
-func forwarded(body string) (map[string][]string, string, bool) {
-	head, rest, ok := strings.Cut(body, "\n\n")
-	if !ok {
-		return nil, "", false
-	}
-	hdr, err := parseHeaders(head)
-	if err != nil || len(hdr) == 0 {
-		return nil, "", false
-	}
-	return hdr, rest, true
 }
 
 // contentType reads the part's Content-Type, defaulting to text/plain.
@@ -355,63 +388,104 @@ func decodeTransfer(s, cte string) ([]byte, error) {
 		}
 		return b, nil
 	}
-	return nil, fail.New("email-encoding", "Part of this message uses a form I cannot undo (%s). Save the message as .eml again, then try again.", strings.TrimSpace(cte))
+	return nil, fail.New("email-encoding", "Part of this message uses a form I cannot undo. Save the message as .eml again, then try again.")
 }
 
 // renderMessage writes the fields a reader needs, then the body.
-func renderMessage(hdr map[string][]string, body string) string {
+func renderMessage(hdr map[string][]string, body string) (string, error) {
 	var b strings.Builder
 	for _, name := range []string{"From", "To", "Cc", "Date", "Subject"} {
-		for _, v := range headerValues(hdr, name) {
+		values, err := headerValues(hdr, name)
+		if err != nil {
+			return "", err
+		}
+		for _, v := range values {
 			fmt.Fprintf(&b, "%s: %s\n", name, v)
 		}
 	}
 	b.WriteString("\n")
 	b.WriteString(body)
 	b.WriteString("\n")
-	return b.String()
+	return b.String(), nil
 }
 
 // headerValues decodes one header, one line per address for To, Cc and Bcc.
-func headerValues(hdr map[string][]string, name string) []string {
+func headerValues(hdr map[string][]string, name string) ([]string, error) {
 	raw := hdr[strings.ToLower(name)]
 	if len(raw) == 0 {
-		return nil
+		return nil, nil
 	}
 	var out []string
 	for _, v := range raw {
-		v = decodeHeader(v)
+		var err error
+		v, err = decodeHeader(v)
+		if err != nil {
+			return nil, err
+		}
 		if name == "To" || name == "Cc" || name == "Bcc" {
 			out = append(out, splitAddresses(v)...)
 			continue
 		}
 		out = append(out, oneLine(v))
 	}
-	return out
+	return out, nil
 }
 
 // decodeHeader undoes RFC 2047 encoded words (=?UTF-8?Q?...?=) and folds the
 // value onto one line. An encoded word Standin cannot decode is a refusal: the
 // name inside it would otherwise stay hidden.
-func decodeHeader(v string) string {
-	dec := &mime.WordDecoder{CharsetReader: func(charset string, input io.Reader) (io.Reader, error) {
-		b, err := io.ReadAll(input)
-		if err != nil {
-			return nil, err
+func decodeHeader(v string) (string, error) {
+	// WordDecoder.DecodeHeader silently retains malformed encoded words, and
+	// bypasses CharsetReader for UTF-8 and ASCII. Validate and decode every word
+	// ourselves, then let it handle whitespace between adjacent encoded words.
+	var normalized strings.Builder
+	rest := v
+	rawDecoder := &mime.WordDecoder{CharsetReader: func(_ string, input io.Reader) (io.Reader, error) { return input, nil }}
+	for {
+		start := strings.Index(rest, "=?")
+		if start < 0 {
+			normalized.WriteString(rest)
+			break
 		}
-		s, err := textenc.DecodeCharset(b, charset)
-		if err != nil {
-			return nil, err
+		normalized.WriteString(rest[:start])
+		word := rest[start:]
+		end := strings.Index(word[2:], "?=")
+		if end < 0 {
+			return "", badHeader()
 		}
-		return strings.NewReader(s), nil
-	}}
-	out, err := dec.DecodeHeader(v)
-	if err != nil {
-		// Keep the raw text: an undecoded word still looks like a name to the
-		// word check less often, but it is not hidden behind an encoder.
-		return oneLine(v)
+		end += 4
+		word = word[:end]
+		label, encoded, ok := strings.Cut(word[2:], "?")
+		if !ok || label == "" {
+			return "", badHeader()
+		}
+		raw, err := rawDecoder.Decode("=?x-standin-raw?" + encoded)
+		if err != nil {
+			return "", badHeader()
+		}
+		decoded, err := textenc.DecodeCharset([]byte(raw), label)
+		if err != nil {
+			return "", badHeader()
+		}
+		// Always use B here, including for plain ASCII: the boundaries must remain
+		// visible until DecodeHeader removes inter-word folding whitespace.
+		normalized.WriteString("=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(decoded)) + "?=")
+		rest = rest[start+end:]
 	}
-	return oneLine(out)
+	out, err := new(mime.WordDecoder).DecodeHeader(normalized.String())
+	if err != nil {
+		return "", badHeader()
+	}
+	// Raw, unencoded header text must also be valid text.
+	out, err = textenc.DecodeCharset([]byte(out), "utf-8")
+	if err != nil {
+		return "", badHeader()
+	}
+	return oneLine(out), nil
+}
+
+func badHeader() error {
+	return fail.New("email-encoding", "This message has a header I cannot decode. Save the message again as UTF-8, then try again.")
 }
 
 func oneLine(s string) string {

@@ -27,7 +27,9 @@ func TestReviewErrorLogCannotExportArbitraryText(t *testing.T) {
 		`[{"time":"Zelda Quorn","command":"scrub","code":"ragged"}]`,
 		`[{"time":"2026-10-31T12:00:00Z","command":"scrub","code":"Zelda Quorn"}]`,
 	} {
-		os.WriteFile(filepath.Join(d, ErrorsFile), []byte(log), 0600)
+		if err := os.WriteFile(filepath.Join(d, ErrorsFile), []byte(log), 0600); err != nil {
+			t.Fatal(err)
+		}
 		if len(LoadErrors(d)) != 0 {
 			t.Fatal("private log text exposed to report")
 		}

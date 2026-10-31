@@ -38,7 +38,7 @@ func TestUnknownAndNearMissLeftAlone(t *testing.T) {
 	if len(r.Unknown) != 1 || r.Unknown[0].Text != "[PERSON_99]" {
 		t.Fatalf("unknown: %+v", r.Unknown)
 	}
-	var near []string
+	near := make([]string, 0, len(r.NearMiss))
 	for _, f := range r.NearMiss {
 		near = append(near, f.Text)
 	}

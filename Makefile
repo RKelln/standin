@@ -1,4 +1,4 @@
-.PHONY: build test vet fmt fmt-check lint no-network ci release-snapshot release-check clean
+.PHONY: build test vet fmt fmt-check lint no-network tidy-check ci release-snapshot release-check clean
 
 BINARY  := standin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)

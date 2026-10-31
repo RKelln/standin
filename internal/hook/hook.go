@@ -42,7 +42,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return block(stderr, fmt.Sprintf("standin hook: %q is not a harness standin knows. Only claude works for now.", harness))
 	}
 	switch event {
-	case "PreToolUse", "PostToolUse", "UserPromptSubmit":
+	case preToolUseEvent, postToolUseEvent, "UserPromptSubmit":
 	default:
 		return block(stderr, fmt.Sprintf("standin hook: %q is not an event standin handles, so it blocks to be safe.", event))
 	}

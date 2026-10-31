@@ -234,7 +234,9 @@ func TestChoicesRoundTrip(t *testing.T) {
 	if err != nil || !exists || !got.Keep["shimano"] || !got.Swap["oksana"] || len(raw) == 0 {
 		t.Fatalf("%v %v %+v", err, exists, got)
 	}
-	os.WriteFile(p, []byte(`{"version":1,"note":"","keep":[],"swap":[],"groups":["calendar"]}`), 0o600)
+	if err := os.WriteFile(p, []byte(`{"version":1,"note":"","keep":[],"swap":[],"groups":["calendar"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, _, err := LoadChoices(p); err == nil {
 		t.Error("an unknown key should be refused")
 	}
@@ -289,11 +291,11 @@ func TestOrdinaryTextIsNotEncoded(t *testing.T) {
 
 func TestTokensKeepWordsAroundARun(t *testing.T) {
 	line := "id AQH3k9JzLm2Pq7Rt then more words"
-	var got []string
+	want := []string{"id", "AQH3k9JzLm2Pq7Rt", "then", "more", "words"}
+	got := make([]string, 0, len(want))
 	for _, sp := range Tokens(line) {
 		got = append(got, line[sp[0]:sp[1]])
 	}
-	want := []string{"id", "AQH3k9JzLm2Pq7Rt", "then", "more", "words"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("tokens = %q, want %q", got, want)
 	}

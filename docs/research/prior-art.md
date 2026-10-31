@@ -1,5 +1,8 @@
 # Prior art, agent hooks and file formats (research, 2026-10-30)
 
+Historical research, with checks dated where recorded. This is not the current implementation
+contract; use [`../PLAN.md`](../PLAN.md) and [`../DESIGN.md`](../DESIGN.md).
+
 **Scope note.** This started as research for a single offline HTML page. Partway through, the project
 owner changed the scope: Standin is now a **command-line tool (Go, one static binary), called mainly by
 agent hooks**. Part A (prior art) applies to both. Part B covers the new scope: agent hooks, running an

@@ -162,6 +162,109 @@ func TestRenderEmailAttachmentNotRead(t *testing.T) {
 	}
 }
 
+func TestRenderEmailAttachmentContainersNotOpened(t *testing.T) {
+	for _, attachment := range []string{
+		"Content-Type: multipart/mixed; boundary=INNER\nContent-Disposition: attachment\n\n--INNER\nContent-Type: text/plain\n\nATTACHMENT SECRET Zelda Quorn\n--INNER--\n",
+		"Content-Type: message/rfc822\nContent-Disposition: attachment; filename=forward.eml\n\nFrom: Zelda Quorn\nSubject: ATTACHMENT SECRET\n\nATTACHMENT SECRET\n",
+		// No attempt to decode or recurse into attachment contents is allowed.
+		"Content-Type: multipart/mixed\nContent-Disposition: attachment\nContent-Transfer-Encoding: ZeldaQuorn\n\nnot even a valid multipart body\n",
+	} {
+		msg := "From: sender@example.com\nContent-Type: multipart/mixed; boundary=OUTER\n\n" +
+			"--OUTER\nContent-Type: text/plain\n\nReadable body.\n--OUTER\n" + attachment + "--OUTER--\n"
+		got, info, err := RenderEmail([]byte(msg))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(got, "SECRET") || strings.Contains(got, "Zelda") || !strings.Contains(got, "Readable body.") {
+			t.Fatalf("attachment was opened or body lost: %q", got)
+		}
+		if info.Attachments != 1 || info.Parts != 3 {
+			t.Fatalf("counts must include the attachment entity once, not its children: %+v", info)
+		}
+	}
+}
+
+func TestRenderEmailMixedAndForwardedHTMLPreserved(t *testing.T) {
+	msg := "From: sender@example.com\nContent-Type: multipart/mixed; boundary=OUTER\n\n" +
+		"--OUTER\nContent-Type: text/plain\n\nPlain note: 123.45.\n" +
+		"--OUTER\nContent-Type: text/html; charset=utf-8\n\n<p>Separate invoice: €345.67.</p>\n" +
+		"--OUTER\nContent-Type: message/rfc822\n\nFrom: Zelda Quorn <zelda@example.com>\nSubject: payment\nContent-Type: text/html; charset=utf-8\n\n<p>Forwarded invoice: €456.78.</p>\n" +
+		"--OUTER--\n"
+	got, info, err := RenderEmail([]byte(msg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Plain note: 123.45.", "Separate invoice: €345.67.", "Forwarded invoice: €456.78.", "From: Zelda Quorn <zelda@example.com>", "Subject: payment"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing independent body/field %q in %q", want, got)
+		}
+	}
+	if !info.FromHTML {
+		t.Error("rendered independent HTML parts must be reported")
+	}
+}
+
+func TestRenderEmailAlternativesScopedToEachSubtree(t *testing.T) {
+	msg := "From: sender@example.com\nContent-Type: multipart/mixed; boundary=OUTER\n\n" +
+		"--OUTER\nContent-Type: multipart/alternative; boundary=ALT\n\n" +
+		"--ALT\nContent-Type: text/html\n\n<p>Discarded HTML copy.</p>\n" +
+		"--ALT\nContent-Type: text/plain\n\nChosen plain copy.\n--ALT--\n" +
+		"--OUTER\nContent-Type: multipart/alternative; boundary=HTML\n\n" +
+		"--HTML\nContent-Type: text/html\n\n<p>Independent HTML fallback.</p>\n--HTML--\n" +
+		"--OUTER--\n"
+	got, info, err := RenderEmail([]byte(msg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "Chosen plain copy.") || !strings.Contains(got, "Independent HTML fallback.") || strings.Contains(got, "Discarded") || !info.FromHTML {
+		t.Fatalf("alternative choice crossed subtrees: %q; %+v", got, info)
+	}
+}
+
+func TestRenderEmailHeaderDecodingIsStrictAndDataFree(t *testing.T) {
+	for _, header := range []string{
+		"Subject: =?ZeldaQuorn?Q?secret?=",
+		"Subject: =?UTF-8?B?/w==?=",
+		"Subject: =?us-ascii?Q?=E9?=",
+		"Subject: =?UTF-8?Q?Zelda=XXQuorn?=",
+		"Subject: =?UTF-8?Q?ZeldaQuorn",
+		"Subject: =?UTF-8?X?ZeldaQuorn?=",
+	} {
+		got, info, err := RenderEmail([]byte("From: sender@example.com\n" + header + "\n\nA body.\n"))
+		if err == nil || got != "" || info != nil {
+			t.Fatalf("malformed header accepted: %q, %+v, %v", got, info, err)
+		}
+		if strings.Contains(err.Error(), "Zelda") || strings.Contains(err.Error(), "Quorn") {
+			t.Fatalf("header data reached refusal: %v", err)
+		}
+	}
+	got, _, err := RenderEmail([]byte("From: sender@example.com\nSubject: =?iso-8859-15?Q?Invoice_=A4100.00?= =?UTF-8?B?77+9?=\n\nBody.\n"))
+	if err != nil || !strings.Contains(got, "Subject: Invoice €100.00�\n") {
+		t.Fatalf("full decoded currency/header lost: %q, %v", got, err)
+	}
+}
+
+func TestRenderEmailRefusalDoesNotEchoEncodingLabels(t *testing.T) {
+	for _, header := range []string{
+		"Content-Transfer-Encoding: Zelda Quorn",
+		"Content-Type: text/plain; charset=ZeldaQuorn",
+	} {
+		for _, nested := range []bool{false, true} {
+			body := header + "\n\nUnread private text.\n"
+			if nested {
+				body = "Content-Type: multipart/mixed; boundary=OUTER\n\n--OUTER\n" + body + "--OUTER--\n"
+			}
+			got, info, err := RenderEmail([]byte("From: sender@example.com\n" + body))
+			if err == nil || got != "" || info != nil {
+				t.Fatalf("want empty refusal; got %q, %+v, %v", got, info, err)
+			}
+			if strings.Contains(err.Error(), "Zelda") || strings.Contains(err.Error(), "Quorn") || strings.Contains(err.Error(), "Unread") {
+				t.Fatalf("untrusted data reached error: %v", err)
+			}
+		}
+	}
+}
+
 func TestRenderEmailForwarded(t *testing.T) {
 	msg := "From: shop@example.com\n" +
 		"Subject: Fwd: late payment\n" +

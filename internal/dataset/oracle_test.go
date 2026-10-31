@@ -1,28 +1,24 @@
 package dataset
 
-// The oracle: our mail reader is checked against a mature one that ships in no
-// binary. github.com/emersion/go-message is imported here and nowhere else, so
-// it is compiled into the test binary only; `go list -deps ./cmd/standin` never
-// sees it, and `make no-network` stays at zero. It is here because it does the
-// one thing ours cannot safely do at run time: it links net through
-// net/textproto (DESIGN 74-75).
+// The mature MIME/charset reader is test-only: the shipped binary must not
+// link its network packages. This oracle compares full decoded fields and body
+// in order, preserving case, amounts, punctuation and currency. Only whitespace
+// is normalized, because the text view adds its own line breaks.
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"testing"
-	"unicode"
 
 	"github.com/emersion/go-message"
 	_ "github.com/emersion/go-message/charset"
 )
 
-// readMail reads one of the invented fixtures.
 func readMail(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "mail", name))
@@ -32,154 +28,206 @@ func readMail(t *testing.T, name string) []byte {
 	return b
 }
 
-// oracleBody returns the decoded plain text of one message, read by go-message.
-func oracleBody(b []byte) (string, error) {
+type oracleText struct {
+	body  string
+	plain bool
+}
+
+// oracleRender follows the same documented text-view policy using the mature
+// reader's MIME boundaries, header decoding and charset conversion. HTMLToText
+// is shared intentionally; its markup policy has separate expected-text tests.
+func oracleRender(b []byte) (string, error) {
 	ent, err := message.Read(bytes.NewReader(b))
-	if ent == nil {
+	if err != nil {
 		return "", err
 	}
-	var out strings.Builder
-	var walk func(e *message.Entity, depth int)
-	walk = func(e *message.Entity, depth int) {
-		if depth > MaxDepth {
-			return
-		}
-		mt, _, _ := e.Header.ContentType()
-		if strings.HasPrefix(mt, "multipart/") {
-			mr := e.MultipartReader()
-			if mr == nil {
-				return
+	body, err := oracleEntity(ent, 0)
+	if err != nil {
+		return "", err
+	}
+	return oracleFields(ent, body.body)
+}
+
+func oracleFields(ent *message.Entity, body string) (string, error) {
+	var rendered strings.Builder
+	for _, name := range []string{"From", "To", "Cc", "Date", "Subject"} {
+		fields := ent.Header.FieldsByKey(name)
+		for fields.Next() {
+			v, err := fields.Text()
+			if err != nil {
+				return "", err
 			}
-			for {
-				p, perr := mr.NextPart()
-				if perr != nil {
-					return
+			values := []string{v}
+			if name == "To" || name == "Cc" {
+				values = splitAddresses(v)
+			}
+			for _, value := range values {
+				fmt.Fprintf(&rendered, "%s: %s\n", name, value)
+			}
+		}
+	}
+	rendered.WriteString("\n" + body)
+	return rendered.String(), nil
+}
+
+func oracleEntity(ent *message.Entity, depth int) (oracleText, error) {
+	if depth > MaxDepth {
+		return oracleText{}, fmt.Errorf("oracle depth limit")
+	}
+	// The entire entity is skipped, including multipart attachments. Test the
+	// disposition before opening either the multipart reader or the body.
+	if ent.Header.Get("Content-Disposition") != "" {
+		disposition, _, err := ent.Header.ContentDisposition()
+		if err != nil {
+			return oracleText{}, err
+		}
+		if strings.EqualFold(disposition, "attachment") {
+			return oracleText{}, nil
+		}
+	}
+	mediaType, _, err := ent.Header.ContentType()
+	if err != nil {
+		return oracleText{}, err
+	}
+	if strings.HasPrefix(mediaType, "multipart/") {
+		reader := ent.MultipartReader()
+		if reader == nil {
+			return oracleText{}, fmt.Errorf("oracle multipart reader missing")
+		}
+		defer func() { _ = reader.Close() }() // cleanup if a child part fails
+		finish := func(value oracleText) (oracleText, error) {
+			if err := reader.Close(); err != nil {
+				return oracleText{}, err
+			}
+			return value, nil
+		}
+		var children []oracleText
+		for {
+			part, err := reader.NextPart()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				return oracleText{}, err
+			}
+			child, err := oracleEntity(part, depth+1)
+			if err != nil {
+				return oracleText{}, err
+			}
+			if strings.TrimSpace(child.body) != "" {
+				children = append(children, child)
+			}
+		}
+		if mediaType == "multipart/alternative" {
+			for _, child := range children {
+				if child.plain {
+					return finish(child)
 				}
-				walk(p, depth+1)
 			}
-		}
-		if strings.EqualFold(mt, "message/rfc822") {
-			inner, _ := io.ReadAll(e.Body)
-			if in, err := message.Read(bytes.NewReader(inner)); in != nil {
-				walk(in, depth+1)
-				_ = err
+			if len(children) > 0 {
+				return finish(children[0])
 			}
-			return
+			return finish(oracleText{})
 		}
-		if strings.EqualFold(mt, "text/plain") {
-			disp, _, _ := e.Header.ContentDisposition()
-			if strings.EqualFold(disp, "attachment") {
-				return
-			}
-			io.Copy(&out, e.Body) // the library has already decoded the charset
-			out.WriteString("\n")
+		var texts []string
+		result := oracleText{}
+		for _, child := range children {
+			texts = append(texts, child.body)
+			result.plain = result.plain || child.plain
 		}
+		result.body = strings.Join(texts, "\n\n")
+		return finish(result)
 	}
-	walk(ent, 0)
-	return out.String(), nil
+	if mediaType != "message/rfc822" && mediaType != "text/plain" && mediaType != "text/html" {
+		return oracleText{}, nil
+	}
+	body, err := io.ReadAll(ent.Body)
+	if err != nil {
+		return oracleText{}, err
+	}
+	switch mediaType {
+	case "message/rfc822":
+		inner, err := message.Read(bytes.NewReader(body))
+		if err != nil {
+			return oracleText{}, err
+		}
+		result, err := oracleEntity(inner, depth+1)
+		if err != nil {
+			return oracleText{}, err
+		}
+		rendered, err := oracleFields(inner, result.body)
+		if err != nil {
+			return oracleText{}, err
+		}
+		result.body = "--- Forwarded message ---\n" + rendered
+		return result, nil
+	case "text/html":
+		return oracleText{body: HTMLToText(string(body))}, nil
+	default:
+		return oracleText{body: string(body), plain: true}, nil
+	}
 }
 
-// contentWords is the multiset of words of three or more letters, lower case.
-// Comparing words rather than lines ignores the line breaks each reader adds.
-func contentWords(s string) []string {
-	var out []string
-	var b strings.Builder
-	flush := func() {
-		if b.Len() >= 3 {
-			out = append(out, b.String())
-		}
-		b.Reset()
+func assertOracleAgrees(t *testing.T, b []byte) {
+	t.Helper()
+	want, err := oracleRender(b)
+	if err != nil {
+		t.Fatalf("oracle: %v", err)
 	}
-	for _, r := range s {
-		if unicode.IsLetter(r) {
-			b.WriteRune(unicode.ToLower(r))
-			continue
-		}
-		flush()
+	got, _, err := RenderEmail(b)
+	if err != nil {
+		t.Fatalf("RenderEmail: %v", err)
 	}
-	flush()
-	sort.Strings(out)
-	return out
+	if strings.Join(strings.Fields(got), " ") != strings.Join(strings.Fields(want), " ") {
+		t.Fatalf("full decoded text differs (only whitespace is normalized):\nwant %q\n got %q", want, got)
+	}
 }
 
-// renderedHeader matches a header line as we print it, at the top of a message
-// or of a forwarded one. go-message gives back only the text, so these lines
-// are dropped before the two readings are compared.
-var renderedHeader = regexp.MustCompile(`(?m)^(From|To|Cc|Date|Subject): .*$`)
-
-// bodyOnly drops the headers we render, and the forwarded-message marker.
-func bodyOnly(rendered string) string {
-	if i := strings.Index(rendered, "\n\n"); i >= 0 {
-		rendered = rendered[i+2:]
-	}
-	rendered = renderedHeader.ReplaceAllString(rendered, "")
-	return strings.ReplaceAll(rendered, "--- Forwarded message ---", "")
-}
-
-func diffWords(want, got []string) string {
-	count := map[string]int{}
-	for _, w := range want {
-		count[w]++
-	}
-	for _, w := range got {
-		count[w]--
-	}
-	var missing, extra []string
-	for w, n := range count {
-		switch {
-		case n > 0:
-			missing = append(missing, w)
-		case n < 0:
-			extra = append(extra, w)
-		}
-	}
-	sort.Strings(missing)
-	sort.Strings(extra)
-	var b strings.Builder
-	if len(missing) > 0 {
-		b.WriteString("missing: " + strings.Join(missing, " ") + "\n")
-	}
-	if len(extra) > 0 {
-		b.WriteString("extra: " + strings.Join(extra, " ") + "\n")
-	}
-	return b.String()
-}
-
-// The fixtures with a plain-text part: an HTML-only message is left out
-// because go-message hands back the HTML itself, which is not a like-for-like
-// comparison with a reader that strips it.
-func TestOracleAgreesOnPlainText(t *testing.T) {
+func TestOracleAgreesOnFullDecodedText(t *testing.T) {
 	for _, name := range []string{
-		"simple.eml", "alternative.eml", "base64.eml", "attachment.eml", "forwarded.eml", "koi8r.eml",
+		"simple.eml", "alternative.eml", "base64.eml", "attachment.eml", "forwarded.eml", "koi8r.eml", "html-only.eml",
 	} {
 		t.Run(name, func(t *testing.T) {
-			b := readMail(t, name)
-			want, err := oracleBody(b)
-			if err != nil {
-				t.Fatalf("oracle could not read %s: %v", name, err)
-			}
-			rendered, _, err := RenderEmail(b)
-			if err != nil {
-				t.Fatalf("RenderEmail(%s): %v", name, err)
-			}
-			wantWords := contentWords(want)
-			gotWords := contentWords(bodyOnly(rendered))
-			if len(wantWords) == 0 {
-				t.Fatalf("%s: the oracle found no text", name)
-			}
-			if d := diffWords(wantWords, gotWords); d != "" {
-				t.Errorf("%s: our reader and go-message disagree on the text:\n%s", name, d)
-			}
+			assertOracleAgrees(t, readMail(t, name))
 		})
 	}
 }
 
-// The oracle must also agree that a message it can read is readable: nothing
-// we refuse is text go-message found without trouble, except where we refuse
-// on purpose (mbox, an unknown character set).
-func TestOracleAgreesOnRefusals(t *testing.T) {
-	b := readMail(t, "simple.eml")
-	if _, err := oracleBody(b); err != nil {
-		t.Fatalf("oracle refused a message we accept: %v", err)
+func TestOraclePreservesCurrencyAndIndependentBodies(t *testing.T) {
+	for name, b := range map[string][]byte{
+		"latin9": []byte("From: =?ISO-8859-15?Q?Zelda_=A4?= <z@example.com>\n" +
+			"Subject: =?ISO-8859-15?Q?Invoice_=A4100.00?=\nContent-Type: text/plain; charset=iso-8859-15\n\nAmount due: \xa4100.00.\n"),
+		"mixed-and-forwarded-html": []byte("From: sender@example.com\nSubject: invoice 123.45\nContent-Type: multipart/mixed; boundary=OUTER\n\n" +
+			"--OUTER\nContent-Type: text/plain; charset=utf-8\n\nPlain note: 123.45.\n" +
+			"--OUTER\nContent-Type: text/html; charset=utf-8\n\n<p>Separate invoice: €345.67.</p>\n" +
+			"--OUTER\nContent-Type: message/rfc822\n\nFrom: Zelda Quorn <zelda@example.com>\nSubject: payment\nContent-Type: text/html; charset=utf-8\n\n<p>Forwarded invoice: €456.78.</p>\n" +
+			"--OUTER--\n"),
+		"multipart-attachment": []byte("From: sender@example.com\nContent-Type: multipart/mixed; boundary=OUTER\n\n" +
+			"--OUTER\nContent-Type: text/plain\n\nVisible €123.45.\n--OUTER\n" +
+			"Content-Type: multipart/mixed; boundary=INNER\nContent-Disposition: attachment\n\n" +
+			"--INNER\nContent-Type: text/plain\n\nATTACHMENT SECRET Zelda Quorn.\n--INNER--\n--OUTER--\n"),
+	} {
+		t.Run(name, func(t *testing.T) { assertOracleAgrees(t, b) })
+	}
+}
+
+func TestOraclePropagatesNestedDecodeFailures(t *testing.T) {
+	for _, leaf := range []string{
+		"Content-Type: text/plain; charset=ZeldaQuorn\n\nSecret body.\n",
+		"Content-Type: text/plain\nContent-Transfer-Encoding: base64\n\n!!!!\n",
+		"Content-Type: text/plain\nSubject: =?ZeldaQuorn?Q?secret?=\n\nBody.\n",
+	} {
+		// The third fixture's bad field belongs to a forwarded message, so it
+		// is rendered as a field instead of being an unused part-level header.
+		if strings.Contains(leaf, "Subject:") {
+			leaf = "Content-Type: message/rfc822\n\nFrom: inner@example.com\n" + leaf
+		}
+		b := []byte("From: sender@example.com\nContent-Type: multipart/mixed; boundary=OUTER\n\n--OUTER\n" + leaf + "--OUTER--\n")
+		if got, err := oracleRender(b); err == nil {
+			t.Fatalf("oracle swallowed nested decode failure: %q", got)
+		}
+		if got, _, err := RenderEmail(b); err == nil || got != "" {
+			t.Fatalf("production reader accepted nested decode failure: %q, %v", got, err)
+		}
 	}
 }

@@ -25,7 +25,7 @@ var listFiles embed.FS
 
 var (
 	loadOnce sync.Once
-	loadErr  error
+	errLoad  error
 	english  map[string]bool
 	first    map[string]bool
 )
@@ -65,10 +65,10 @@ func Load() error {
 			first, err = readList("firstnames.txt.gz")
 		}
 		if err != nil || len(english) < 1000 || len(first) < 1000 {
-			loadErr = fail.New("word-lists", "My built-in word lists are damaged, so I cannot check free text. Get a fresh copy of standin.")
+			errLoad = fail.New("word-lists", "My built-in word lists are damaged, so I cannot check free text. Get a fresh copy of standin.")
 		}
 	})
-	return loadErr
+	return errLoad
 }
 
 func mustLoad() {

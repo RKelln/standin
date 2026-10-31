@@ -167,7 +167,9 @@ func TestChangedWordsVoidApproval(t *testing.T) {
 	wj := filepath.Join(p.privDir(), "words.json")
 	b, _ := os.ReadFile(wj)
 	b = bytes.Replace(b, []byte(`"keep": []`), []byte(`"keep": ["shimano"]`), 1)
-	os.WriteFile(wj, b, 0o600)
+	if err := os.WriteFile(wj, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	r := p.run("", false, "scrub")
 	if r.code != 2 || !strings.Contains(r.stderr, "words.json") || !strings.Contains(r.stderr, "standin approve") {
 		t.Fatalf("a changed words.json must void the approval: %+v", r)

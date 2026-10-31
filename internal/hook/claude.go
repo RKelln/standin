@@ -14,10 +14,16 @@ import (
 	"github.com/RKelln/standin/internal/store"
 )
 
+const (
+	toolInputFilePath = "file_path"
+	preToolUseEvent   = "PreToolUse"
+	postToolUseEvent  = "PostToolUse"
+)
+
 // Tools the PreToolUse hook knows. init uses ToolMatcher for the hook matcher.
 var (
-	readTools  = map[string]string{"Read": "file_path", "NotebookRead": "notebook_path"}
-	writeTools = map[string]string{"Edit": "file_path", "MultiEdit": "file_path", "Write": "file_path", "NotebookEdit": "notebook_path"}
+	readTools  = map[string]string{"Read": toolInputFilePath, "NotebookRead": "notebook_path"}
+	writeTools = map[string]string{"Edit": toolInputFilePath, "MultiEdit": toolInputFilePath, "Write": toolInputFilePath, "NotebookEdit": "notebook_path"}
 	searchTool = map[string]bool{"Grep": true, "Glob": true, "LS": true}
 	shellTools = map[string]bool{"Bash": true, "PowerShell": true}
 )
@@ -173,6 +179,9 @@ func (c *claude) redirect(p string, input map[string]any) int {
 	if !ok {
 		return c.deny("Do not read " + c.show(p) + ". " + zoneAdvice(ZoneRaw))
 	}
+	if !c.g.safeScrubbedTwin(twin) {
+		return c.deny("The scrubbed copy is not a safe regular file. Replace links with real files and folders, then ask the person to run standin scrub again.")
+	}
 	rs, rerr := os.Stat(rawAbs)
 	ts, terr := os.Stat(twin)
 	if rerr != nil || terr != nil || rs.IsDir() || ts.IsDir() || !ts.ModTime().After(rs.ModTime()) {
@@ -189,7 +198,7 @@ func (c *claude) redirect(p string, input map[string]any) int {
 		"the person puts the real values back later. Do not try to read raw/."
 	return c.emit(map[string]any{
 		"hookSpecificOutput": map[string]any{
-			"hookEventName":            "PreToolUse",
+			"hookEventName":            preToolUseEvent,
 			"permissionDecision":       "allow",
 			"permissionDecisionReason": "standin: raw read sent to scrubbed copy",
 			"updatedInput":             out,
@@ -295,12 +304,13 @@ func splitShell(cmd string) []shellWord {
 		r := rs[i]
 		switch {
 		case quote != 0:
-			if r == quote {
+			switch {
+			case r == quote:
 				quote = 0
-			} else if r == '\\' && quote == '"' && i+1 < len(rs) {
+			case r == '\\' && quote == '"' && i+1 < len(rs):
 				i++
 				cur.WriteRune(rs[i])
-			} else {
+			default:
 				cur.WriteRune(r)
 			}
 		case r == '\'' || r == '"':
@@ -491,7 +501,7 @@ func (c *claude) postToolUse() int {
 		"Ask the person to check it, and to run standin report and describe how it happened, with no data in the description."
 	return c.emit(map[string]any{
 		"hookSpecificOutput": map[string]any{
-			"hookEventName":     "PostToolUse",
+			"hookEventName":     postToolUseEvent,
 			"additionalContext": note,
 		},
 	})

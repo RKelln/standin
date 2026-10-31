@@ -29,7 +29,9 @@ jobs:
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
-          cache: false # standard library only; there is no go.sum
+          cache: false # builds use the checked-in vendor tree
+      - name: Module graph matches source
+        run: go mod tidy -diff
       - name: Formatting
         shell: bash
         run: |
@@ -72,6 +74,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Module graph matches source
+        run: go mod tidy -diff
       - uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           version: v2.11.2

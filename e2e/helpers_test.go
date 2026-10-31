@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/csv"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -45,7 +46,11 @@ func TestMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, "e2e: cannot make temp dir:", err)
 			return 1
 		}
-		defer os.RemoveAll(dir)
+		defer func() {
+			if err := os.RemoveAll(dir); err != nil {
+				fmt.Fprintln(os.Stderr, "e2e: cannot remove temp dir:", err)
+			}
+		}()
 		name := "standin"
 		if runtime.GOOS == "windows" {
 			name += ".exe"
@@ -182,8 +187,8 @@ func (p *project) run(in []byte, args ...string) result {
 	err := cmd.Run()
 	code := 0
 	if err != nil {
-		ee, ok := err.(*exec.ExitError)
-		if !ok {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) {
 			p.t.Fatalf("run standin %v: %v", args, err)
 		}
 		code = ee.ExitCode()
@@ -243,12 +248,19 @@ func (p *project) findPrivateDir() string {
 func (p *project) find(dir, base string) string {
 	p.t.Helper()
 	var hits []string
-	filepath.WalkDir(filepath.Join(p.dir, dir), func(path string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && d.Name() == base {
+	root := filepath.Join(p.dir, dir)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && d.Name() == base {
 			hits = append(hits, path)
 		}
 		return nil
 	})
+	if err != nil {
+		p.t.Fatalf("cannot scan %s/: %v", dir, err)
+	}
 	if len(hits) != 1 {
 		p.t.Fatalf("want one %s under %s/, found %v", base, dir, hits)
 	}
@@ -256,13 +268,23 @@ func (p *project) find(dir, base string) string {
 }
 
 func (p *project) files(dir string) []string {
+	p.t.Helper()
 	var out []string
-	filepath.WalkDir(filepath.Join(p.dir, dir), func(path string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
+	root := filepath.Join(p.dir, dir)
+	walkErrorPath := ""
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			walkErrorPath = path
+			return err
+		}
+		if !d.IsDir() {
 			out = append(out, path)
 		}
 		return nil
 	})
+	if err != nil && (!os.IsNotExist(err) || filepath.Clean(walkErrorPath) != filepath.Clean(root)) {
+		p.t.Fatalf("cannot scan %s/: %v", dir, err)
+	}
 	return out
 }
 
@@ -344,7 +366,7 @@ func parseCSV(t *testing.T, text string) []map[string]string {
 	if len(rows) == 0 {
 		t.Fatal("empty CSV")
 	}
-	var out []map[string]string
+	out := make([]map[string]string, 0, len(rows)-1)
 	for _, row := range rows[1:] {
 		m := map[string]string{}
 		for i, h := range rows[0] {

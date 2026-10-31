@@ -203,6 +203,21 @@ var beforePublish func(int)
 // interrupted saves must be recovered by the person. This is not a claim of
 // an all-files atomic commit or power-loss durability.
 func WriteAll(outs []Out) error {
+	// Reject aliases before even making folders. Case-folding on every platform
+	// makes a batch safe to use on case-insensitive file systems too.
+	var destinations []string
+	for _, o := range outs {
+		abs, err := filepath.Abs(o.Path)
+		if err != nil {
+			return fail.New("output-path", "I could not check an output path. I wrote no output files.")
+		}
+		for _, prior := range destinations {
+			if strings.EqualFold(abs, prior) {
+				return fail.New("output-duplicate", "Two outputs use the same file name. Give them different names, then try again. I wrote no output files.")
+			}
+		}
+		destinations = append(destinations, abs)
+	}
 	type staged struct {
 		out     Out
 		root    *os.Root

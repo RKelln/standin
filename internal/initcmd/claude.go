@@ -88,7 +88,7 @@ func DenyRules(store, home string) []string {
 // the project from CLAUDE_PROJECT_DIR or the hook input's cwd, so a moved
 // folder keeps working (decision 34).
 func hookEntry(exe, event, private string) map[string]any {
-	args := []any{"hook", "claude", event}
+	args := []any{"hook", claudeHarness, event}
 	if private != "" {
 		args = append(args, "--private", private)
 	}
@@ -190,12 +190,12 @@ func (f *settingsFile) change(note string) ([]change, error) {
 		}
 	}
 	if !f.exists {
-		return []change{{rel: f.rel, path: f.path, data: buf.Bytes(), perm: 0o644, what: "made", note: note}}, nil
+		return []change{{rel: f.rel, path: f.path, data: buf.Bytes(), perm: 0o644, what: changeMade, note: note}}, nil
 	}
 	// Keep the old file as <name>.bak, written first, so a person can go back.
 	return []change{
 		{rel: f.rel + ".bak", path: f.path + ".bak", data: f.old, perm: 0o600, what: "saved the old copy as"},
-		{rel: f.rel, path: f.path, data: buf.Bytes(), perm: 0o644, what: "updated", note: note},
+		{rel: f.rel, path: f.path, data: buf.Bytes(), perm: 0o644, what: changeUpdate, note: note},
 	}, nil
 }
 

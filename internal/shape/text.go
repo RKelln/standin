@@ -87,7 +87,7 @@ func TextMarkdown(d *dataset.Dataset, shownPath, version string, tc TextCounts) 
 				cols = append(cols, c)
 			}
 		}
-		var names []string
+		names := make([]string, 0, len(cols))
 		for _, c := range cols {
 			names = append(names, mdCode(tableLabel(c)))
 		}
@@ -112,7 +112,7 @@ func TextMarkdown(d *dataset.Dataset, shownPath, version string, tc TextCounts) 
 	fmt.Fprintf(&b, "- Unusual words (not English words: names, brands, streets, short forms): %s\n", CountBand(tc.Unusual))
 	fmt.Fprintf(&b, "- Name-like words (after Hi, Dear or Thanks, in a sign-off, first names): %s\n", CountBand(tc.NameLike))
 	fmt.Fprintf(&b, "- Day and month names: %s\n", CountBand(tc.Calendar))
-	var kinds []string
+	kinds := make([]string, 0, len(tc.Patterns))
 	for k := range tc.Patterns {
 		kinds = append(kinds, k)
 	}

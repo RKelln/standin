@@ -75,9 +75,9 @@ func planAgents(proj string) ([]change, error) {
 	if next == s {
 		return nil, nil
 	}
-	what := "updated"
+	what := changeUpdate
 	if err != nil {
-		what = "made"
+		what = changeMade
 	}
 	return []change{{rel: rel, path: p, data: []byte(next), perm: 0o644, what: what, note: " (standin block)"}}, nil
 }

@@ -2,7 +2,7 @@
 
 Status: design history and decisions, updated 2026-10-31. `docs/PLAN.md` is the current implementation
 contract. The initial proposal below supplies background; later numbered decisions record changes.
-The review and its fixes are tracked in `docs/REVIEW-2026-10-31.md` and `docs/REVIEW-FIXES-2026-10-31.md`.
+The numbered decisions below record the review findings and resulting design changes.
 
 ## 1. Why
 
@@ -573,3 +573,46 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     verified rather than merely small, which is the part that was actually bothering the author.
     Cost: the test binary compiles it, `vendor/` carries it (+0.1 MB), and a library upgrade means
     re-reading a diff.
+
+### From the follow-up verification (2026-10-31)
+
+76. **Private filenames must be renamed before shape (replaces 70–71).** Shape checks the whole
+    batch against filename rules and the batch's values before warnings or publication. A flagged
+    name refuses the whole run, without printing that name. Why: an encoding warning bypassed the
+    filename guard; six-hex anonymous hashes collided and allowed guesses of private names. Neutral
+    names avoid a new secret saved by shape and the stale assignments of sequential names. Cost:
+    setup needs a rename first. Old anonymous shape files from earlier versions need to be removed
+    by the person before sharing; this change does not delete old files. Refusal messages display
+    only known file extensions, never arbitrary lowercase suffixes.
+77. **Output batches reject duplicate destinations before making folders.** Clean absolute paths
+    must be distinct, including Unicode case aliases, on every platform. Why: two staged outputs
+    previously silently replaced one another. This conservatively refuses some distinct names on
+    case-sensitive filesystems so a batch stays portable. Boundary and link checks still apply.
+78. **A redirected read checks the destination too.** A scrubbed twin must be outside protected
+    zones, inside the scrubbed tree, regular, and have no linked component below the project root.
+    Why: a newer link pointing back into raw passed the timestamp test. Hooks still hand a pathname
+    to another program: they cannot stop another process changing it after the check.
+79. **Encoded tokens partition the text.** Find ordinary words only in gaps between encoded runs.
+    Why: a hyphenated word crossing a run's boundary produced overlapping byte spans and crashed
+    scrub after a successful approve. This keeps the surrounding slug punctuation and makes each
+    span safe to replace; approve, scrub and restore share the regression.
+80. **Attachment disposition is checked before walking a body.** Skip the entire attachment entity,
+    including multipart containers and attached messages; count the skipped container once.
+    [RFC 2183 §2.9](https://www.rfc-editor.org/rfc/rfc2183#section-2.9) applies disposition to the
+    multipart as a whole. Body selection belongs within each alternative subtree; independent mixed
+    parts and forwarded message bodies remain in order, following the distinction in
+    [RFC 2046 §5.1.3–4](https://www.rfc-editor.org/rfc/rfc2046#section-5.1.3). Why: global plain/HTML
+    selection silently removed forwarded HTML and independent mixed bodies.
+81. **Mail refusals must be data-free, and decoded text must be checked for loss.** Charset and
+    transfer labels are private input, so errors must not repeat them. Declared encodings must not
+    turn euros into another currency. Unknown encoded-header charsets refuse instead of returning
+    the raw header. The [x/text decoder contract](https://pkg.go.dev/golang.org/x/text/encoding#Decoder)
+    permits malformed bytes to become replacement characters without an error, so checking its
+    error alone is insufficient. The tests include malformed bytes and legitimate replacement
+    characters, plus complete decoded text with amounts and currency symbols. The mature-parser
+    comparison is evidence for these synthetic cases, not proof that all mail is supported; this
+    qualifies decision 75's earlier claim of verification.
+82. **Run the promised dependency check in hosted verification.** Native CI, archive checks and
+    release verification now invoke `go mod tidy -diff` (or `tidy-check`). Why: decision 73 promised
+    the check in CI, but only the local Make target actually ran it. Vendored offline builds and the
+    separate check for linked network packages remain required.

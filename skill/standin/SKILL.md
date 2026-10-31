@@ -49,8 +49,11 @@ always gets the same stand-in, so you can still match a payment to an invoice.
 
 The person does the steps marked **(person)**. You can run the others if you have a shell.
 
-1. The person puts the real file in `raw/`, for example `raw/invoices.csv`.
+1. The person puts the real file in `raw/`, with a plain name such as `raw/invoices.csv`.
 2. Run `standin shape raw/invoices.csv` (with no `--private` or `--project`). It writes `shape/invoices.csv.shape.md`.
+   If a filename looks private, shape refuses the whole batch before writing. Ask the person to
+   rename it; do not inspect `raw/` to find the file. Old anonymous shape files from earlier versions
+   should be cleared by the person before sharing the folder.
 3. Read the shape file only. Propose the config: for each column pick one action and give a
    short reason.
    - `tokenize` (swap each value for a stand-in). Needs a `category`: `PERSON`, `ORG`,
@@ -63,8 +66,7 @@ The person does the steps marked **(person)**. You can run the others if you hav
      and phone numbers get swapped; other words stay.
    - When unsure, choose `tokenize`. A wrong `keep` leaks data. A wrong `tokenize` only makes
      the work a bit harder.
-   - If the shape file says a header looks like data, or says to rename the file, tell the
-     person.
+   - If the shape file says a header looks like data, tell the person.
    - **Text files (`.md`, `.txt`)** have no `columns`. Their shape file lists `fields` (each
      `Label: value` line, by label), `tables` (Markdown table columns, by header) and the free text,
      as counts only. Give `fields` and `tables` the same actions as columns. For the rest, add
@@ -73,11 +75,15 @@ The person does the steps marked **(person)**. You can run the others if you hav
      by default; write `"keep_groups": []` inside `text` to swap them too. You cannot name a word to keep:
      you never see the words, and that is on purpose. For case notes about people's lives, prefer
      `drop`.
+   - **Email (`.eml`)** uses the same `fields`, `tables` and `text` rules. The scrubbed copy is a
+     plain-text view, and restore returns that view. Attachments are skipped; formatting, links and
+     pictures are not kept. Separate body parts and forwarded messages stay in order.
 4. **(person)** Runs `standin review` to read the rules as a plain table. (You may run it too. For
    text files it shows only counts of words.)
 5. **(person)** Runs `standin approve` in their own terminal. It asks them yes or no for each
-   `keep`, each `scan` and each word check, and shows them the words in text files to pick the
-   ones to keep. You cannot do this step, and you should not try. If the config changes later, they
+   file rule's group of keeps and group of scans, each word check and each kept word group. It shows
+   them the candidate words so they can pick which ones to keep. You cannot do this step, and you
+   should not try. If the config changes later, they
    must approve again.
 6. Run `standin scrub` (or ask the person to). It writes the files in `scrubbed/`. If the config
    has a `keep`, `scan` or word check that is not approved yet, scrub stops and writes nothing: ask
@@ -111,8 +117,8 @@ Standin lowers what you see. It does not make data safe to share. Know its gaps:
 - Files it cannot read (PDF, Excel, Word, images) are refused, not scrubbed.
 - The hooks are a safety net, not a wall. The shell check only guesses from the command text,
   so a script or a clever command can still read `raw/`. That is why rule 2 matters: do not
-  look for a way around it. Suggest the person turns on Claude Code's sandbox, which blocks
-  every program from `raw/` and `restored/` (macOS, Linux and WSL2; not plain Windows).
+  look for a way around it. Ask the person to follow the sandbox setup and checks printed by
+  `standin init`. The shell sandbox does not cover file tools, MCP servers or hooks.
 - If a tool result may hold a real value, the hook warns you without saying which one. Stop and
   ask the person to check.
 - Hooks do not see `@file` mentions, CLAUDE.md or memory files, pasted text, or text already in

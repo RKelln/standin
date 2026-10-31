@@ -52,6 +52,9 @@ standin show PERSON_9        # prints who a stand-in is, on your screen only
 - **Fail closed:** if Standin cannot parse a file, or is unsure about its rules, it writes no output
   files and says why. A failed or interrupted save may need recovery; see below.
 - **The mapping is the secret.** It lives outside the project folder. Never give it to an AI.
+- Use plain file names such as `invoices.csv`. If a name looks private, `shape` stops and asks you
+  to rename it before writing any shape files.
+  If an older version made anonymous shape files, clear those old files before sharing the folder.
 - `standin check FILE` looks for real values and private patterns, and names the stand-in, never the value.
 - `standin report` prints an issue report with no data in it. Agents should use it to report problems.
 - `standin show PERSON_9` (or `[PERSON_9]`) prints the real value behind a stand-in. It prints only to your
@@ -96,8 +99,9 @@ fill it in by hand where you need it.
 - **One message per file.** Standin reads the message and shows the AI a plain-text view: `From`, `To`,
   `Cc`, `Date` and `Subject` at the top, then the message text. Those five take the same rules as any
   other field.
-- The plain-text part of a message is used when it has one. A message that is only HTML is turned into
-  text: fonts, styles, scripts, links and pictures are dropped.
+- When a message offers plain text and HTML as alternatives, Standin uses the plain text. Separate
+  body parts and forwarded messages are kept in order. HTML is turned into text: fonts, styles,
+  scripts, links and pictures are dropped.
 - **Attachments are never opened.** The shape file says how many were there.
 - `.mbox` and `.msg` files hold several messages, so they are refused. Save one message per `.eml`, or
   paste the messages into a `.md` file.

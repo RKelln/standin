@@ -24,6 +24,8 @@ const (
 	ExitRefused = 2 // refused or error; nothing written
 )
 
+const textInputLabel = "typed text"
+
 // Env is what a command can touch. Tests fill it in.
 type Env struct {
 	Stdin           io.Reader
@@ -381,7 +383,7 @@ func show(rel string) string {
 // inside the project, else by its own name only.
 func (c *ctx) showArg(arg string) string {
 	if arg == "-" {
-		return "typed text"
+		return textInputLabel
 	}
 	abs, err := filepath.Abs(arg)
 	if err == nil {

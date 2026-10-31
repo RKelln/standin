@@ -235,8 +235,7 @@ func (d *Dataset) writeJSON(rw Rewriter) ([]byte, error) {
 	indent := func(n int) {
 		b.WriteString(strings.Repeat("  ", n))
 	}
-	var cell func(path string, n *jnode)
-	cell = func(path string, n *jnode) {
+	cell := func(path string, n *jnode) {
 		nv, changed := rw.Cell(d.colOf[path], n.str)
 		if changed {
 			b.WriteString(jsonString(nv))

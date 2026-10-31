@@ -238,7 +238,10 @@ func Label(name string, index int) (label, flag string) {
 
 // Columns works out the shape of each column.
 func Columns(d *dataset.Dataset) []ColumnInfo {
-	var out []ColumnInfo
+	if len(d.Columns) == 0 {
+		return nil
+	}
+	out := make([]ColumnInfo, 0, len(d.Columns))
 	for i, name := range d.Columns {
 		ci := ColumnInfo{Index: i, IsKey: name == dataset.KeyColumn}
 		ci.Label, ci.HeaderFlag = Label(name, i)

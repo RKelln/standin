@@ -7,7 +7,7 @@ import (
 )
 
 func kinds(s string) []string {
-	var out []string
+	out := make([]string, 0, len(s))
 	for _, h := range FindPatterns(s, nil) {
 		out = append(out, h.Kind+"="+s[h.Start:h.End])
 	}

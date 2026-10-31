@@ -330,7 +330,7 @@ func (r *run) swapper(sf *scrubFile) func(key string) bool {
 			return false
 		}
 		if cd := r.finder.Get(key); cd != nil {
-			return !(keepCal && cd.Group() == words.GroupCalendar)
+			return !keepCal || cd.Group() != words.GroupCalendar
 		}
 		return r.choices.Swap[key]
 	}
@@ -580,7 +580,7 @@ func headerStandin(m *mapping.Mapping, name string) string {
 		return m.Get(scan.CategoryForKind(kind), name)
 	}
 	if utf8.RuneCountInString(mapping.Normalize(name)) >= scan.MinKnownLen {
-		if e, ok := m.FindValue(name); ok && !(scan.SkipKnown != nil && scan.SkipKnown(e)) {
+		if e, ok := m.FindValue(name); ok && (scan.SkipKnown == nil || !scan.SkipKnown(e)) {
 			return m.Get(e.Category, name)
 		}
 	}

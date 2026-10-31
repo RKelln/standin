@@ -228,10 +228,13 @@ func (m *Mapping) CountByCategory() []struct {
 	for _, e := range m.Entries {
 		counts[e.Category]++
 	}
-	var out []struct {
+	if len(counts) == 0 {
+		return nil
+	}
+	out := make([]struct {
 		Category string
 		Count    int
-	}
+	}, 0, len(counts))
 	for c, n := range counts {
 		out = append(out, struct {
 			Category string

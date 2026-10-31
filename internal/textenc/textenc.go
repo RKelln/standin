@@ -136,43 +136,62 @@ func trimBOM(s string) string {
 	return s
 }
 
-// DecodeCharset turns the bytes of a message part into text, using the
-// character set the message names. Bytes that are already valid UTF-8 are used
-// as they are: a wrong Latin-1 label is common, and guessing otherwise would
-// change a name. ISO-8859-1 and Windows-1252 are decoded here; any other
-// character set is refused rather than guessed.
+// DecodeCharset honors a declared mail character set. Only a missing label
+// uses the general file decoder's UTF-8/Windows-1252 compatibility rule.
 func DecodeCharset(b []byte, charset string) (string, error) {
 	name := strings.ToLower(strings.Trim(strings.TrimSpace(charset), `"'`))
 	switch name {
-	case "", "utf-8", "utf8", "us-ascii", "ascii", "iso-8859-1", "iso8859-1", "iso-8859-15",
-		"latin1", "latin-1", "latin9", "windows-1252", "cp1252":
-		// These labels are often wrong in old mail, and the bytes are the
-		// truth: valid UTF-8 is taken as UTF-8, anything else as Windows-1252.
-		if utf8.Valid(b) {
-			return checkText(string(b))
+	case "":
+		text, _, err := Decode(b)
+		return text, err
+	case "utf-8", "utf8":
+		if !utf8.Valid(b) {
+			return "", badCharset()
 		}
+		return checkText(trimBOM(string(b)))
+	case "us-ascii", "ascii":
+		for _, c := range b {
+			if c >= utf8.RuneSelf {
+				return "", badCharset()
+			}
+		}
+		return checkText(string(b))
+	case "windows-1252", "cp1252":
 		t, ok := decode1252(b)
 		if !ok {
-			return "", fail.New("bad-charset", "The text of this message does not fit the character set it names. Save the message again as UTF-8, then try again.")
+			return "", badCharset()
 		}
 		return checkText(t)
 	}
-	// Any other name is honored, not guessed at. IANA names first, because
-	// that is what mail headers use ("iso-2022-jp", "shift_jis", "gb2312",
-	// "koi8-r"); then the HTML aliases ("sjis", "cp936"). Both are table
-	// lookups: no network, no parser (decision 74).
+	// IANA names take precedence over web aliases: ISO-8859-1 and ISO-8859-15
+	// must not be silently read as Windows-1252 (their currency bytes differ).
 	enc, err := ianaindex.MIME.Encoding(name)
 	if err != nil || enc == nil {
 		enc, err = htmlindex.Get(name)
 	}
 	if err != nil || enc == nil {
-		return "", fail.New("bad-charset", "This message is written in %s, a character set I cannot read. Save the message again as UTF-8, then try again.", charset)
+		return "", fail.New("bad-charset", "This message names a character set I cannot read. Save the message again as UTF-8, then try again.")
 	}
 	out, _, err := transform.Bytes(enc.NewDecoder(), b)
 	if err != nil {
-		return "", fail.New("bad-charset", "The text of this message does not fit the character set it names (%s). Save the message again as UTF-8, then try again.", charset)
+		return "", badCharset()
+	}
+	// x/text replaces malformed byte sequences with U+FFFD without returning an
+	// error. Accept that rune only if the whole input round-trips exactly: then
+	// it was literal text in this encoding, not inserted recovery. Noncanonical
+	// spellings containing that rune may conservatively refuse. Valid UTF-8 is
+	// handled above without this restriction.
+	if bytes.Contains(out, []byte("\uFFFD")) {
+		back, _, err := transform.Bytes(enc.NewEncoder(), out)
+		if err != nil || !bytes.Equal(back, b) {
+			return "", badCharset()
+		}
 	}
 	return checkText(string(out))
+}
+
+func badCharset() error {
+	return fail.New("bad-charset", "The text of this message does not fit the character set it names. Save the message again as UTF-8, then try again.")
 }
 
 // checkText refuses a decoded part that still holds control bytes: that is

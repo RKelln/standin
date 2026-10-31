@@ -92,7 +92,9 @@ func TestJSONArray(t *testing.T) {
 		t.Fatal(err)
 	}
 	var a, b any
-	json.Unmarshal([]byte(records), &a)
+	if err := json.Unmarshal([]byte(records), &a); err != nil {
+		t.Fatal(err)
+	}
 	if err := json.Unmarshal(out, &b); err != nil {
 		t.Fatal(err)
 	}

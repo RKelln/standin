@@ -28,7 +28,11 @@ func TestShapeHasNoValuesAndNoSmallCounts(t *testing.T) {
 		}
 	}
 	// No exact count or length below 5 outside headings, column numbers and the help text.
-	body := md[:strings.Index(md, "## How to write the config")]
+	end := strings.Index(md, "## How to write the config")
+	if end < 0 {
+		t.Fatal("shape file is missing the config instructions")
+	}
+	body := md[:end]
 	small := regexp.MustCompile(`(?m)^- (Rows|Records|Empty|Different values|Length)[^\n]*\b[1-4]\b`)
 	for _, line := range strings.Split(body, "\n") {
 		if small.MatchString(line) && !strings.Contains(line, "under 5") && !regexp.MustCompile(`1-5|6-10|11-20|21-40|41-80`).MatchString(line) {

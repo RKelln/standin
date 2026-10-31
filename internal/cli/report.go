@@ -109,7 +109,7 @@ func runReport(c *ctx) error {
 			ext, js, ds.Encoding, len(ds.Columns), hidden, shape.CountBand(ds.Rows)))
 		return nil
 	})
-	var kc []kindCount
+	kc := make([]kindCount, 0, len(exts))
 	for e, n := range exts {
 		kc = append(kc, kindCount{e, n})
 	}
@@ -117,7 +117,7 @@ func runReport(c *ctx) error {
 	if len(kc) == 0 {
 		p("- raw/: no files")
 	} else {
-		var parts []string
+		parts := make([]string, 0, len(kc))
 		for _, k := range kc {
 			parts = append(parts, fmt.Sprintf("%s: %d", k.ext, k.n))
 		}
@@ -136,8 +136,9 @@ func runReport(c *ctx) error {
 		case !exists:
 			p("- Mapping: none yet")
 		default:
-			var parts []string
-			for _, cc := range m.CountByCategory() {
+			counts := m.CountByCategory()
+			parts := make([]string, 0, len(counts))
+			for _, cc := range counts {
 				parts = append(parts, cc.Category+" "+shape.CountBand(cc.Count))
 			}
 			p("- Mapping: stand-ins by category: %s", strings.Join(parts, ", "))

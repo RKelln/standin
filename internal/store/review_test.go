@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,7 +68,9 @@ func TestReviewWriteBoundaryRejectsRootLink(t *testing.T) {
 	dir := canonicalTempDir(t)
 	other := filepath.Join(dir, "scrubbed")
 	alias := filepath.Join(dir, "restored")
-	os.Mkdir(other, 0700)
+	if err := os.Mkdir(other, 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(other, alias); err != nil {
 		t.Skip("no symlinks: ", err)
 	}
@@ -85,7 +88,9 @@ func TestReviewPendingSaveBlocksReadersAndWriters(t *testing.T) {
 		t.Fatal("reader ignored pending save")
 	}
 	if l, err := Lock(dir); err == nil {
-		l.Close()
+		if err := l.Close(); err != nil {
+			t.Fatal(err)
+		}
 		t.Fatal("writer ignored pending save")
 	}
 }
@@ -93,7 +98,9 @@ func TestReviewPendingSaveBlocksReadersAndWriters(t *testing.T) {
 func TestReviewPrivateSaveKeepsPreviousFile(t *testing.T) {
 	dir := canonicalTempDir(t)
 	p := filepath.Join(dir, MappingFile)
-	os.WriteFile(p, []byte("old invented mapping"), 0600)
+	if err := os.WriteFile(p, []byte("old invented mapping"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := WriteAll([]Out{{Path: p, Data: []byte("new invented mapping"), Perm: 0600, Root: dir}}); err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +120,11 @@ func TestReviewLeaseAcrossProcesses(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer l.Close()
+		defer func() {
+			if err := l.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 		if err := os.WriteFile(filepath.Join(dir, "child-held"), []byte("held"), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +142,17 @@ func TestReviewLeaseAcrossProcesses(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { os.WriteFile(filepath.Join(dir, "child-release"), nil, 0600); cmd.Wait() }()
+	waited := false
+	defer func() {
+		if !waited {
+			if err := os.WriteFile(filepath.Join(dir, "child-release"), nil, 0600); err != nil {
+				t.Error(err)
+			}
+			if err := cmd.Wait(); err != nil {
+				t.Error(err)
+			}
+		}
+	}()
 	for i := 0; i < 500; i++ {
 		if _, err := os.Stat(filepath.Join(dir, "child-held")); err == nil {
 			break
@@ -145,7 +166,9 @@ func TestReviewLeaseAcrossProcesses(t *testing.T) {
 		t.Fatal("reader ignored another process lease")
 	}
 	if l, err := lockFor(dir, 20*time.Millisecond); err == nil {
-		l.Close()
+		if err := l.Close(); err != nil {
+			t.Fatal(err)
+		}
 		t.Fatal("second process acquired existing lease")
 	}
 	if err := os.WriteFile(filepath.Join(dir, "child-release"), nil, 0600); err != nil {
@@ -154,18 +177,25 @@ func TestReviewLeaseAcrossProcesses(t *testing.T) {
 	if err := cmd.Wait(); err != nil {
 		t.Fatal(err)
 	}
+	waited = true
 	l, err := Lock(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	l.Close()
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestReviewAbandonedLeaseNeverStolen(t *testing.T) {
 	dir := canonicalTempDir(t)
-	os.Mkdir(filepath.Join(dir, LockFile), 0700)
+	if err := os.Mkdir(filepath.Join(dir, LockFile), 0700); err != nil {
+		t.Fatal(err)
+	}
 	if l, err := lockFor(dir, 10*time.Millisecond); err == nil {
-		l.Close()
+		if err := l.Close(); err != nil {
+			t.Fatal(err)
+		}
 		t.Fatal("stole abandoned lease")
 	}
 	if err := CheckReady(dir); err == nil {
@@ -180,7 +210,11 @@ func TestReviewKilledPublicationLeavesRecoveryMarker(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer l.Close()
+		defer func() {
+			if err := l.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 		beforePublish = func(int) {
 			if err := os.WriteFile(filepath.Join(dir, "child-publishing"), nil, 0600); err != nil {
 				t.Fatal(err)
@@ -195,13 +229,28 @@ func TestReviewKilledPublicationLeavesRecoveryMarker(t *testing.T) {
 		return
 	}
 	dir := canonicalTempDir(t)
-	os.WriteFile(filepath.Join(dir, MappingFile), []byte("old invented mapping"), 0600)
+	if err := os.WriteFile(filepath.Join(dir, MappingFile), []byte("old invented mapping"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestReviewKilledPublicationLeavesRecoveryMarker$")
 	cmd.Env = append(os.Environ(), "STANDIN_KILL_TEST_CHILD=1", "STANDIN_KILL_TEST_DIR="+dir)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { cmd.Process.Kill(); cmd.Wait() }()
+	waited := false
+	defer func() {
+		if !waited {
+			if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Error(err)
+			}
+			if err := cmd.Wait(); err != nil {
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) {
+					t.Error(err)
+				}
+			}
+		}
+	}()
 	for i := 0; i < 500; i++ {
 		if _, err := os.Stat(filepath.Join(dir, "child-publishing")); err == nil {
 			break
@@ -214,7 +263,13 @@ func TestReviewKilledPublicationLeavesRecoveryMarker(t *testing.T) {
 	if err := cmd.Process.Kill(); err != nil {
 		t.Fatal(err)
 	}
-	cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatal(err)
+		}
+	}
+	waited = true
 	if err := CheckReady(dir); err == nil {
 		t.Fatal("reader accepted a killed publication")
 	}
@@ -230,12 +285,20 @@ func TestReviewKilledPublicationLeavesRecoveryMarker(t *testing.T) {
 func TestReviewPublicationFailureRestoresOldFiles(t *testing.T) {
 	dir := canonicalTempDir(t)
 	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
-	os.WriteFile(a, []byte("old a"), 0600)
-	os.WriteFile(b, []byte("old b"), 0600)
+	if err := os.WriteFile(a, []byte("old a"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte("old b"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	beforePublish = func(i int) {
 		if i == 1 {
-			os.Remove(b)
-			os.Mkdir(b, 0700)
+			if err := os.Remove(b); err != nil {
+				t.Errorf("remove target: %v", err)
+			}
+			if err := os.Mkdir(b, 0700); err != nil {
+				t.Errorf("replace target with directory: %v", err)
+			}
 		}
 	}
 	defer func() { beforePublish = nil }()
@@ -252,14 +315,26 @@ func TestReviewPublicationFailureRestoresOldFiles(t *testing.T) {
 func TestReviewRollbackFailureLeavesMarker(t *testing.T) {
 	dir := canonicalTempDir(t)
 	a, b := filepath.Join(dir, MappingFile), filepath.Join(dir, "b.txt")
-	os.WriteFile(a, []byte("old invented mapping"), 0600)
-	os.WriteFile(b, []byte("old b"), 0600)
+	if err := os.WriteFile(a, []byte("old invented mapping"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte("old b"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	beforePublish = func(i int) {
 		if i == 1 {
-			os.Remove(a)
-			os.Mkdir(a, 0700)
-			os.Remove(b)
-			os.Mkdir(b, 0700)
+			if err := os.Remove(a); err != nil {
+				t.Errorf("remove mapping: %v", err)
+			}
+			if err := os.Mkdir(a, 0700); err != nil {
+				t.Errorf("replace mapping with directory: %v", err)
+			}
+			if err := os.Remove(b); err != nil {
+				t.Errorf("remove target: %v", err)
+			}
+			if err := os.Mkdir(b, 0700); err != nil {
+				t.Errorf("replace target with directory: %v", err)
+			}
 		}
 	}
 	defer func() { beforePublish = nil }()

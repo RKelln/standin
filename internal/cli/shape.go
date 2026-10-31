@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"path/filepath"
 
@@ -95,6 +93,14 @@ func runShape(c *ctx) error {
 			}
 		}
 	}
+	// Refuse the whole batch before warnings or output names can expose a
+	// filename. Anonymous public hashes let a reader test guesses of that name;
+	// requiring a neutral name avoids both that oracle and saved secret state.
+	for _, f := range files {
+		if dataLikeName(f.inRaw) || knownDataName(f.inRaw, names) {
+			return fail.New("filename-data", "A raw file name looks like private data. Rename it to something plain (like invoices.csv), then run shape again. I wrote no output files.")
+		}
+	}
 	shapeDir := filepath.Join(c.project, "shape")
 	var outs []store.Out
 	type note struct {
@@ -113,14 +119,7 @@ func runShape(c *ctx) error {
 		}
 		c.noteEncoding(f, d)
 		shown := f.rel
-		var out string
-		if dataLikeName(f.inRaw) || knownDataName(f.inRaw, names) {
-			shown = ""
-			out = filepath.Join(shapeDir, anonymousName(f.inRaw))
-			c.warn("One file name looks like private data. Its shape file is %s. Rename the raw file to something plain (like invoices.csv), then run shape again.", filepath.Base(out))
-		} else {
-			out = filepath.Join(shapeDir, filepath.FromSlash(f.inRaw)+".shape.md")
-		}
+		out := filepath.Join(shapeDir, filepath.FromSlash(f.inRaw)+".shape.md")
 		hidden := 0
 		for _, ci := range shape.Columns(d) {
 			if ci.HeaderFlag != "" && ci.HeaderFlag != "empty" {
@@ -128,11 +127,7 @@ func runShape(c *ctx) error {
 			}
 		}
 		if hidden > 0 {
-			label := show(f.rel)
-			if shown == "" {
-				label = "raw/(name hidden)"
-			}
-			c.warn("%s: %d column header(s) look like private data (names, emails, numbers). The shape file hides them as [COLUMN_n].", label, hidden)
+			c.warn("%s: %d column header(s) look like private data (names, emails, numbers). The shape file hides them as [COLUMN_n].", show(f.rel), hidden)
 		}
 		md := ""
 		if d.Kind == dataset.Text {
@@ -165,28 +160,14 @@ func runShape(c *ctx) error {
 	return nil
 }
 
-// safeExt returns the extension only when it is a plain one (".csv", ".xlsx"),
-// so a file named ".Zelda Quorn" cannot leak its name through this message.
+// safeExt names only familiar file kinds. An arbitrary lowercase suffix may
+// itself be private data, so syntax alone cannot make it safe to print.
 func safeExt(name string) string {
 	ext := filepath.Ext(name)
-	if len(ext) < 3 || len(ext) > 9 {
-		return ""
+	if plainExt[ext] {
+		return ext
 	}
-	for _, r := range ext[1:] {
-		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') {
-			return ""
-		}
-	}
-	return ext
-}
-
-// anonymousName names the shape file of a raw file whose own name must not
-// appear. It is a hash of the project-relative path, so the same file always
-// gets the same name: a second shape run overwrites its own file instead of
-// leaving a stale one behind (decision 71).
-func anonymousName(inRaw string) string {
-	sum := sha256.Sum256([]byte(filepath.ToSlash(inRaw)))
-	return "file_" + hex.EncodeToString(sum[:3]) + ".shape.md"
+	return ""
 }
 
 // countLabel counts fields and table columns in words: "1 field and 2 table

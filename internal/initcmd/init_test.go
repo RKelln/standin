@@ -58,7 +58,7 @@ func readJSON(t *testing.T, p string) map[string]any {
 func snapshot(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	m := map[string]string{}
-	filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -71,6 +71,9 @@ func snapshot(t *testing.T, dir string) map[string]string {
 		m[rel] = string(b)
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return m
 }
 
@@ -237,6 +240,16 @@ func TestInitMergesExisting(t *testing.T) {
 }
 
 func TestInitRefusals(t *testing.T) {
+	writeSettings := func(t *testing.T, p, name, body string) {
+		t.Helper()
+		dir := filepath.Join(p, ".claude")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cases := []struct {
 		name   string
 		claude func(t *testing.T)
@@ -248,36 +261,44 @@ func TestInitRefusals(t *testing.T) {
 		{"old major", func(t *testing.T) { fakeClaude(t, "1.9.999", true, nil) }, nil, nil, "too old"},
 		{"unreadable version", func(t *testing.T) { fakeClaude(t, "", true, errors.New("no number")) }, nil, nil, "cannot read the Claude Code version"},
 		{"bad settings json", nil, func(t *testing.T, p string) {
-			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
-			os.WriteFile(filepath.Join(p, ".claude", "settings.json"), []byte("{oops"), 0o644)
+			if err := os.MkdirAll(filepath.Join(p, ".claude"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(p, ".claude", "settings.json"), []byte("{oops"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}, nil, "not a JSON object"},
 		{"settings is array", nil, func(t *testing.T, p string) {
-			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
-			os.WriteFile(filepath.Join(p, ".claude", "settings.json"), []byte("[]"), 0o644)
+			writeSettings(t, p, "settings.json", "[]")
 		}, nil, "not a JSON object"},
 		{"hooks not object", nil, func(t *testing.T, p string) {
-			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
-			os.WriteFile(filepath.Join(p, ".claude", "settings.json"), []byte(`{"hooks": []}`), 0o644)
+			writeSettings(t, p, "settings.json", `{"hooks": []}`)
 		}, nil, "hooks is not an object"},
 		{"deny not list", nil, func(t *testing.T, p string) {
-			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
-			os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte(`{"permissions": {"deny": "x"}}`), 0o644)
+			writeSettings(t, p, "settings.local.json", `{"permissions": {"deny": "x"}}`)
 		}, nil, "deny is not a list"},
 		{"shared deny not list", nil, func(t *testing.T, p string) {
-			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
-			os.WriteFile(filepath.Join(p, ".claude", "settings.json"), []byte(`{"permissions": {"deny": "x"}}`), 0o644)
+			writeSettings(t, p, "settings.json", `{"permissions": {"deny": "x"}}`)
 		}, []string{"--shared"}, "deny is not a list"},
 		{"bad local settings json", nil, func(t *testing.T, p string) {
-			os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
-			os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte("{oops"), 0o644)
+			if err := os.MkdirAll(filepath.Join(p, ".claude"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte("{oops"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}, nil, "not a JSON object"},
 		{"broken agents block", nil, func(t *testing.T, p string) {
-			os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte(agentsBegin+"\nhalf"), 0o644)
+			if err := os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte(agentsBegin+"\nhalf"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}, nil, "broken or doubled"},
 		{"unknown harness", nil, nil, []string{"--harness", "claude,vim"}, "not a harness"},
 		{"store inside project", nil, nil, []string{"--private", "PROJ/secret"}, "inside the project"},
 		{"raw is a file", nil, func(t *testing.T, p string) {
-			os.WriteFile(filepath.Join(p, "raw"), []byte("x"), 0o644)
+			if err := os.WriteFile(filepath.Join(p, "raw"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}, nil, "not a folder"},
 		{"extra words", nil, nil, []string{"now"}, "unexpected"},
 	}
@@ -428,10 +449,14 @@ func TestInitMovesOldHooksToLocal(t *testing.T) {
 func TestInitLeavesSharedAlone(t *testing.T) {
 	fakeClaude(t, "2.1.300", true, nil)
 	p := newProject(t)
-	os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
+	if err := os.MkdirAll(filepath.Join(p, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	body := "{\"model\":   \"x\", \"hooks\": {\"Stop\": []}}"
 	shared := filepath.Join(p, ".claude", "settings.json")
-	os.WriteFile(shared, []byte(body), 0o644)
+	if err := os.WriteFile(shared, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if r := runInit(t, "--project", p, "--bin", "/x/standin"); r.code != 0 {
 		t.Fatalf("%+v", r)
 	}

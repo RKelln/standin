@@ -21,7 +21,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - run: make fmt-check vet test no-network
+      - run: make fmt-check vet test no-network tidy-check
       - run: go test -race ./... -count=1
       - run: sh tools/claude_smoke.sh --self-test
 

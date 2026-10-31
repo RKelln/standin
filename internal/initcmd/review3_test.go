@@ -17,8 +17,12 @@ func TestInitPreflightsEveryDestination(t *testing.T) {
 			p := newProject(t)
 			path := filepath.Join(p, filepath.FromSlash(blocked))
 			if strings.HasSuffix(blocked, ".bak") {
-				os.MkdirAll(path, 0755)
-				os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte(`{"model":"invented-model"}`), 0600)
+				if err := os.MkdirAll(path, 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte(`{"model":"invented-model"}`), 0600); err != nil {
+					t.Fatal(err)
+				}
 			} else {
 				os.MkdirAll(filepath.Dir(path), 0755)
 				os.WriteFile(path, []byte("blocker"), 0644)
@@ -56,7 +60,9 @@ func TestInitRefusesLinkedDestinations(t *testing.T) {
 	fakeClaude(t, "2.1.300", true, nil)
 	p := newProject(t)
 	target := filepath.Join(t.TempDir(), "target")
-	os.Mkdir(target, 0755)
+	if err := os.Mkdir(target, 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(target, filepath.Join(p, "scrubbed")); err != nil {
 		t.Skip(err)
 	}
@@ -74,8 +80,12 @@ func TestInitRefusesAmbiguousSettingsJSON(t *testing.T) {
 		t.Run(body, func(t *testing.T) {
 			fakeClaude(t, "2.1.300", true, nil)
 			p := newProject(t)
-			os.Mkdir(filepath.Join(p, ".claude"), 0755)
-			os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte(body), 0600)
+			if err := os.Mkdir(filepath.Join(p, ".claude"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(p, ".claude", "settings.local.json"), []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
 			before := snapshot(t, p)
 			r := runInit(t, "--project", p, "--bin", "/x/standin")
 			if r.code != 2 || !reflect.DeepEqual(before, snapshot(t, p)) {

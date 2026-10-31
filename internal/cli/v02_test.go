@@ -15,7 +15,9 @@ import (
 func newTPAt(t *testing.T, rel string) *tp {
 	base := t.TempDir()
 	p := &tp{t: t, dir: filepath.Join(base, filepath.FromSlash(rel)), home: filepath.Join(base, "home")}
-	os.MkdirAll(filepath.Join(p.dir, "raw"), 0o755)
+	if err := os.MkdirAll(filepath.Join(p.dir, "raw"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	return p
 }
 
@@ -90,7 +92,9 @@ func TestMovedProjectHint(t *testing.T) {
 	at := func(dir string) *tp { return &tp{t: t, dir: dir, home: home} }
 
 	old := at(oldDir)
-	os.MkdirAll(filepath.Join(oldDir, "raw"), 0o755)
+	if err := os.MkdirAll(filepath.Join(oldDir, "raw"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	old.write("raw/inv.csv", "Customer\nZelda Quorn\n")
 	old.write("standin.config.json", plainCfg)
 	if r := old.run("", false, "scrub"); r.code != 0 {
@@ -98,7 +102,9 @@ func TestMovedProjectHint(t *testing.T) {
 	}
 	oldPriv := old.privDir()
 
-	os.MkdirAll(filepath.Dir(newDir), 0o755)
+	if err := os.MkdirAll(filepath.Dir(newDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Rename(oldDir, newDir); err != nil {
 		t.Fatal(err)
 	}
@@ -238,8 +244,15 @@ func TestRestoreMessageNamesPlainPath(t *testing.T) {
 				}
 			}
 			// Run from inside the project, as a person would.
-			wd, _ := os.Getwd()
-			defer os.Chdir(wd)
+			wd, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := os.Chdir(wd); err != nil {
+					t.Error(err)
+				}
+			}()
 			if err := os.Chdir(p.dir); err != nil {
 				t.Fatal(err)
 			}

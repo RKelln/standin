@@ -23,9 +23,12 @@ import (
 )
 
 const (
-	exitOK    = 0
-	exitWarn  = 1
-	exitBlock = 2
+	exitOK        = 0
+	exitWarn      = 1
+	exitBlock     = 2
+	changeMade    = "made"
+	changeUpdate  = "updated"
+	claudeHarness = "claude"
 )
 
 // change is one planned file write.
@@ -68,7 +71,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	for _, h := range strings.Split(*harness, ",") {
 		h = strings.ToLower(strings.TrimSpace(h))
 		switch h {
-		case "claude", "codex", "opencode":
+		case claudeHarness, "codex", "opencode":
 			harnesses[h] = true
 		case "":
 		default:
@@ -146,7 +149,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	cfg := filepath.Join(proj, hook.ConfigName)
 	if _, err := os.Stat(cfg); errors.Is(err, os.ErrNotExist) {
-		plan = append(plan, change{rel: hook.ConfigName, path: cfg, data: []byte(starterConfig), perm: 0o644, what: "made"})
+		plan = append(plan, change{rel: hook.ConfigName, path: cfg, data: []byte(starterConfig), perm: 0o644, what: changeMade})
 	} else if err != nil {
 		return fail("cannot check " + hook.ConfigName + ": " + err.Error())
 	}
@@ -264,7 +267,7 @@ func planFixed(proj, rel, content string) []change {
 	}
 	what := "made"
 	if err == nil {
-		what = "updated"
+		what = changeUpdate
 	}
 	return []change{{rel: rel, path: p, data: []byte(content), perm: 0o644, what: what}}
 }

@@ -105,7 +105,7 @@ func runRestore(c *ctx) error {
 		if err != nil {
 			return err
 		}
-		mode, label, out := restore.Text, "typed text", ""
+		mode, label, out := restore.Text, textInputLabel, ""
 		if a == "-" {
 			if dashSeen {
 				return fail.New("usage", "Use - only once.")

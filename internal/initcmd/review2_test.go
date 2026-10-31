@@ -32,10 +32,14 @@ func TestIsOursNeedsStandinProgram(t *testing.T) {
 func TestInitBackupAndTeammateNote(t *testing.T) {
 	fakeClaude(t, "2.1.300", true, nil)
 	p := newProject(t)
-	os.MkdirAll(filepath.Join(p, ".claude"), 0o755)
+	if err := os.MkdirAll(filepath.Join(p, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	old := `{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"/old/standin","args":["hook","claude","PostToolUse"]}]}]}}`
 	shared := filepath.Join(p, ".claude", "settings.json")
-	os.WriteFile(shared, []byte(old), 0o644)
+	if err := os.WriteFile(shared, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	r := runInit(t, "--project", p, "--bin", "/new/standin")
 	if r.code != 0 {
 		t.Fatalf("%+v", r)

@@ -8,7 +8,8 @@ The release notes come from the git log; commits starting `docs:`, `test:` or `c
 
 The workflows are now in this checkout. They must be pushed with permission to update GitHub Actions
 before they can run. CI runs native Go tests on Linux, macOS and Windows, races on Linux and macOS,
-the standard-library/no-network dependency checks, and builds the six release archives as snapshots.
+module-graph and no-network checks, and builds the six release archives as snapshots. The shipped
+binary uses one vendored character-set module; the mail-parser dependency is test-only.
 The GoReleaser version is fixed at v2.11.2; action references use full commit hashes. Review and update
 those pins deliberately. Sources for the pins are the upstream release pages for
 [checkout v5.0.0](https://github.com/actions/checkout/releases/tag/v5.0.0),
@@ -37,7 +38,7 @@ Wait for the full native CI matrix on that commit before pushing a release tag.
 ## Before you tag
 
 ```sh
-make ci                 # gofmt check, vet, test, no-network check, lint (if installed), build
+make ci                 # format, vet, tests, no-network, tidy, optional lint, build
 make release-check      # goreleaser check (needs goreleaser installed)
 make release-snapshot   # build every platform into dist/ without publishing
 ./dist/standin_linux_amd64_v1/standin version   # path varies by goreleaser version
@@ -55,18 +56,21 @@ This still tests a small fixed set of tools, not arbitrary shell commands or MCP
 
 ## Cut a release
 
+Choose a new version before running these commands; replace `vX.Y.Z` throughout. Do not reuse an
+existing tag.
+
 ```sh
 git checkout main && git pull
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
 gh run watch --repo RKelln/standin   # follow the Release workflow
 ```
 
-For a trial run, tag a release candidate (`v0.1.0-rc.1`). GoReleaser marks it as a prerelease.
+For a trial run, tag a release candidate (`vX.Y.Z-rc.1`). GoReleaser marks it as a prerelease.
 `install.sh` with no `--version` installs the latest *full* release, so test a candidate with:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/RKelln/standin/main/install.sh | sh -s -- --version v0.1.0-rc.1
+curl -fsSL https://raw.githubusercontent.com/RKelln/standin/main/install.sh | sh -s -- --version vX.Y.Z-rc.1
 ```
 
 ## After the release: check the install

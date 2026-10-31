@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -53,7 +54,8 @@ func (p *project) runWithTTY(answer string, args ...string) (result, error) {
 	master.Close()
 	<-done
 	code := 0
-	if ee, ok := err.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		code = ee.ExitCode()
 	} else if err != nil {
 		return result{}, err

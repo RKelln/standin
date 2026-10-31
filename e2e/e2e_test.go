@@ -294,7 +294,7 @@ func TestScrubPrintsPrivatePath(t *testing.T) {
 
 // One scrub over raw/** must give the same result as scrubbing invoices first.
 // bank-export.csv sorts before invoices.csv, so a one-pass scrub would not yet know the names.
-// The contract does not say which; this test records the behaviour.
+// The contract does not say which; this test records the behavior.
 func TestScrubAllAtOnceFindsNamesInBank(t *testing.T) {
 	p := newProject(t)
 	p.addRaw("invoices.csv", "invoices.csv")
@@ -398,17 +398,14 @@ func TestFileNameLooksLikeData(t *testing.T) {
 	p := newProject(t)
 	p.addRaw("invoices.csv", "Amara Okafor.csv")
 	r := p.run(nil, "shape", "raw/Amara Okafor.csv")
-	p.wantCode(r, 0, 1)
-	files := p.files("shape")
-	if len(files) != 1 {
-		t.Fatalf("want one shape file, got %v\n%s", files, r)
+	p.wantCode(r, 2)
+	if files := p.files("shape"); len(files) != 0 {
+		t.Fatalf("private filename must refuse before writing shapes: %v\n%s", files, r)
 	}
-	base := filepath.Base(files[0])
-	if strings.Contains(strings.ToLower(base), "okafor") || !strings.HasPrefix(base, "file_") {
-		t.Errorf("shape file for a data-like file name should be file_n…, got %q", base)
+	p.noLeaksInOutput(knownValues(t))
+	if !strings.Contains(strings.ToLower(r.stdout+r.stderr), "rename") {
+		t.Errorf("refusal should explain the next step: %s", r)
 	}
-	noLeaks(t, "shape file", readFile(t, files[0]), knownValues(t))
-	// Not checking stdout: the person needs to be told which file to rename (contract is silent).
 }
 
 // Success check 6 and fail-closed input handling.
@@ -622,7 +619,9 @@ func TestJSONInputs(t *testing.T) {
 	p.wantCode(p.run(nil, "restore", "scrubbed/customers.json"), 0, 1)
 	restored := readFile(t, p.find("restored", "customers.json"))
 	var orig []map[string]any
-	json.Unmarshal(fixture(t, "customers.json"), &orig)
+	if err := json.Unmarshal(fixture(t, "customers.json"), &orig); err != nil {
+		t.Fatal(err)
+	}
 	for _, rec := range orig {
 		if name := rec["name"].(string); !strings.Contains(restored, name) {
 			t.Errorf("restored customers.json is missing %q", name)

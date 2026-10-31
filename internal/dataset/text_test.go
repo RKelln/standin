@@ -52,7 +52,7 @@ func TestParseText(t *testing.T) {
 	}
 	out, _ := d.Write(Rewriter{
 		Cell: func(c int, v string) (string, bool) { return "<" + d.Columns[c] + ">", true },
-		Name: func(s string) string { return strings.ToUpper(s) },
+		Name: strings.ToUpper,
 		Text: func(_ int, s string) string { return strings.ReplaceAll(s, "Oksana", "[NAME_1]") },
 	})
 	for _, w := range []string{"- **From:** <From>\r\n", "| SERVICE | PRICE |\r\n", "|<Service>|<Price>|\r\n", "Hi [NAME_1], the", "Leila: see you then"} {

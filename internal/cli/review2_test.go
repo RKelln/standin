@@ -56,8 +56,6 @@ func TestOneWordNameHeaders(t *testing.T) {
 	}
 }
 
-const wordsCfg = `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"words"}}]}`
-
 // F2: a word swapped before (a one-word NAME value) is swapped wherever it
 // shows up, also in lower case inside a link, and approve still asks about it.
 func TestKnownOneWordNameSwappedInLinks(t *testing.T) {
@@ -136,7 +134,9 @@ func TestMovedHintOffTerminalNamesNoPath(t *testing.T) {
 	p.run("", false, "scrub")
 	old := p.privDir()
 	moved := &tp{t: t, dir: filepath.Join(filepath.Dir(p.dir), "moved", "shop"), home: p.home}
-	os.MkdirAll(filepath.Dir(moved.dir), 0o755)
+	if err := os.MkdirAll(filepath.Dir(moved.dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Rename(p.dir, moved.dir); err != nil {
 		t.Fatal(err)
 	}

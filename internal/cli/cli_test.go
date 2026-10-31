@@ -20,13 +20,17 @@ type tp struct {
 func newTP(t *testing.T) *tp {
 	base := t.TempDir()
 	p := &tp{t: t, dir: filepath.Join(base, "shop"), home: filepath.Join(base, "home")}
-	os.MkdirAll(filepath.Join(p.dir, "raw"), 0o755)
+	if err := os.MkdirAll(filepath.Join(p.dir, "raw"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	return p
 }
 
 func (p *tp) write(rel, s string) {
 	full := filepath.Join(p.dir, rel)
-	os.MkdirAll(filepath.Dir(full), 0o755)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		p.t.Fatal(err)
+	}
 	if err := os.WriteFile(full, []byte(s), 0o644); err != nil {
 		p.t.Fatal(err)
 	}
@@ -288,10 +292,10 @@ func TestDataLikeFileName(t *testing.T) {
 	p.write("raw/Ann Fakelee.csv", "Amount\n1.00\n")
 	p.write("standin.config.json", `{"version":1,"files":[]}`)
 	r := p.run("", false, "shape")
-	if r.code != 1 {
+	if r.code != 2 || p.exists("shape") {
 		t.Fatalf("%+v", r)
 	}
-	noValues(t, "shape output", r.stdout+r.stderr+p.read(anonShape(t, p)))
+	noValues(t, "shape output", r.stdout+r.stderr)
 	r = p.run("", false, "scrub")
 	if r.code != 2 || p.exists("scrubbed") {
 		t.Fatalf("%+v", r)

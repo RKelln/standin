@@ -1,33 +1,20 @@
 package cli
 
 import (
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
-
-// anonShape finds the anonymous shape file (file_<hash>.shape.md) that shape
-// writes for a file whose name it will not print (decision 71).
-func anonShape(t *testing.T, p *tp) string {
-	t.Helper()
-	ms, err := filepath.Glob(filepath.Join(p.dir, "shape", "file_*.shape.md"))
-	if err != nil || len(ms) != 1 {
-		t.Fatalf("want one anonymous shape file, got %v (%v)", ms, err)
-	}
-	return strings.TrimPrefix(ms[0], p.dir+string(filepath.Separator))
-}
 
 func TestReviewSingleNameFilenameHidden(t *testing.T) {
 	p := newTP(t)
 	p.write("raw/Oksana.csv", "Customer\nOksana\n")
 	p.write("standin.config.json", `{"version":1,"files":[]}`)
 	r := p.run("", false, "shape")
-	if r.code != 1 {
-		t.Fatalf("shape should hide the filename: %+v", r)
+	if r.code != 2 || p.exists("shape") {
+		t.Fatalf("shape should refuse the filename before writing: %+v", r)
 	}
-	anon := anonShape(t, p)
-	if strings.Contains(r.stdout+r.stderr+p.read(anon), "Oksana") {
+	if strings.Contains(r.stdout+r.stderr, "Oksana") {
 		t.Fatal("name exposed by shape")
 	}
 	r = p.run("", false, "scrub")
@@ -42,7 +29,7 @@ func TestReviewKnownValueInFilenameRefused(t *testing.T) {
 	p.write("raw/grace.csv", "Amount\n12.50\n")
 	p.write("standin.config.json", `{"version":1,"files":[]}`)
 	shape := p.run("", false, "shape")
-	if shape.code != 1 || strings.Contains(shape.stdout+shape.stderr, "grace.csv") {
+	if shape.code != 2 || p.exists("shape") || strings.Contains(shape.stdout+shape.stderr, "grace.csv") {
 		t.Fatalf("shape should hide the known name: %+v", shape)
 	}
 	r := p.run("", false, "scrub")
@@ -85,10 +72,10 @@ func TestReviewHyphenatedNameInFilename(t *testing.T) {
 	p.write("raw/sam-notes.md", "The owner says hello.\n")
 	p.write("standin.config.json", `{"version":1,"files":[]}`)
 	r := p.run("", false, "shape")
-	if r.code != 1 {
-		t.Fatalf("shape should hide a hyphenated name: %+v", r)
+	if r.code != 2 || p.exists("shape") {
+		t.Fatalf("shape should refuse a hyphenated name: %+v", r)
 	}
-	if regexp.MustCompile(`(?i)\bsam\b`).MatchString(r.stdout + r.stderr + p.read(anonShape(t, p))) {
+	if regexp.MustCompile(`(?i)\bsam\b`).MatchString(r.stdout + r.stderr) {
 		t.Fatal("name exposed by shape")
 	}
 	r = p.run("", false, "scrub")
@@ -147,6 +134,8 @@ func TestSafeExt(t *testing.T) {
 		{"notes", ""},
 		{"x.y", ""},
 		{"odd.XLSX", ""},
+		{"note.oksana", ""},
+		{"note.zelda", ""},
 	} {
 		if got := safeExt(c.in); got != c.want {
 			t.Errorf("safeExt(%q) = %q, want %q", c.in, got, c.want)
@@ -154,21 +143,40 @@ func TestSafeExt(t *testing.T) {
 	}
 }
 
-// Running shape twice writes each anonymous shape file once, under the same
-// name: a hash of the path, not the next free number (decision 71).
-func TestAnonymousShapeNameIsStable(t *testing.T) {
+// Former six-hex path hashes collided for these two names, silently replacing
+// one shape. Private names now require a neutral rename, with no public oracle.
+func TestPrivateShapeNamesRefuseStableWithoutHash(t *testing.T) {
 	p := newTP(t)
-	p.write("raw/sam-notes.md", "The owner says hello.\n")
+	p.write("raw/sam-4875.csv", "Amount\n12.50\n")
+	p.write("raw/sam-11062.csv", "Amount\n25.00\n")
 	p.write("standin.config.json", `{"version":1,"files":[]}`)
-	p.run("", false, "shape")
-	first := anonShape(t, p)
-	p.run("", false, "shape")
-	if second := anonShape(t, p); second != first {
-		t.Fatalf("second run renamed the shape file: %q then %q", first, second)
+	first := p.run("", false, "shape")
+	second := p.run("", false, "shape")
+	if first.code != 2 || second.code != 2 || p.exists("shape") || first.stderr != second.stderr {
+		t.Fatalf("want stable refusal without output: first=%+v second=%+v", first, second)
 	}
-	ms, _ := filepath.Glob(filepath.Join(p.dir, "shape", "file_*.shape.md"))
-	if len(ms) != 1 {
-		t.Fatalf("want one anonymous shape file, got %v", ms)
+	if strings.Contains(first.stdout+first.stderr, "sam") || strings.Contains(first.stdout+first.stderr, "5dc4bb") {
+		t.Fatal("private name or path hash exposed")
+	}
+}
+
+func TestShapeEncodingWarningDoesNotRevealKnownFilename(t *testing.T) {
+	p := newTP(t)
+	p.write("raw/a.csv", "Customer\nGrace\n")
+	p.write("raw/grace.csv", "Notes\n\x93hi\x94\n")
+	p.write("standin.config.json", `{"version":1,"files":[]}`)
+	r := p.run("", false, "shape")
+	if r.code != 2 || p.exists("shape") || strings.Contains(strings.ToLower(r.stdout+r.stderr), "grace") {
+		t.Fatalf("private filename reached encoding warning: %+v", r)
+	}
+}
+
+func TestBatchUnknownExtensionIsHidden(t *testing.T) {
+	p := newTP(t)
+	p.write("raw/note.oksana", "Invented text\n")
+	r := p.run("", false, "shape")
+	if r.code != 2 || strings.Contains(strings.ToLower(r.stdout+r.stderr), "oksana") {
+		t.Fatalf("unknown extension exposed: %+v", r)
 	}
 }
 
