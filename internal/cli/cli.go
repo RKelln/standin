@@ -2,7 +2,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -340,8 +339,22 @@ func dataLikePart(p string) bool {
 		checks = append(checks, p)
 	}
 	for _, s := range checks {
-		if _, ok := scan.LooksLikeDataName(s); ok {
+		if _, ok := scan.LooksLikeDataHeader(s); ok {
 			return true
+		}
+	}
+	// A hyphen or underscore separates words in a file name as much as a space
+	// does in a header: "sam-notes.md" is a first name plus a word, not one
+	// word. Only the word check runs on each part, so "report-2026.csv" (a
+	// plain number) is not mistaken for data (decision 69).
+	for _, sep := range []string{"-", "_"} {
+		if !strings.Contains(stem, sep) {
+			continue
+		}
+		for _, part := range strings.Split(stem, sep) {
+			if part != "" && scan.HeaderWords != nil && scan.HeaderWords(part) {
+				return true
+			}
 		}
 	}
 	return false
@@ -387,6 +400,7 @@ type rawFile struct {
 	abs   string
 	rel   string // project-relative, like raw/a/b.csv
 	inRaw string // relative to raw/, like a/b.csv
+	named bool   // named on the command line, so the person has already seen it
 }
 
 // rawFiles returns the named files (each must be inside raw/), or every file under raw/.
@@ -442,7 +456,7 @@ func (c *ctx) rawFiles() ([]rawFile, error) {
 		}
 		if !seen[r] {
 			seen[r] = true
-			out = append(out, rawFile{abs: abs, rel: r, inRaw: strings.TrimPrefix(r, "raw/")})
+			out = append(out, rawFile{abs: abs, rel: r, inRaw: strings.TrimPrefix(r, "raw/"), named: true})
 		}
 	}
 	return out, nil
@@ -450,5 +464,3 @@ func (c *ctx) rawFiles() ([]rawFile, error) {
 
 // Files a computer adds to folders by itself.
 var skipJunk = map[string]bool{"desktop.ini": true, "thumbs.db": true}
-
-func isNotExist(err error) bool { return errors.Is(err, fs.ErrNotExist) }

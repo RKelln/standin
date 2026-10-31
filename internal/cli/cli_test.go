@@ -288,10 +288,10 @@ func TestDataLikeFileName(t *testing.T) {
 	p.write("raw/Ann Fakelee.csv", "Amount\n1.00\n")
 	p.write("standin.config.json", `{"version":1,"files":[]}`)
 	r := p.run("", false, "shape")
-	if r.code != 1 || !p.exists("shape/file_1.shape.md") {
+	if r.code != 1 {
 		t.Fatalf("%+v", r)
 	}
-	noValues(t, "shape output", r.stdout+r.stderr+p.read("shape/file_1.shape.md"))
+	noValues(t, "shape output", r.stdout+r.stderr+p.read(anonShape(t, p)))
 	r = p.run("", false, "scrub")
 	if r.code != 2 || p.exists("scrubbed") {
 		t.Fatalf("%+v", r)
