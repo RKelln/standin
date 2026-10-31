@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/RKelln/standin/internal/fail"
+	"github.com/RKelln/standin/internal/jsonsafe"
+	"github.com/RKelln/standin/internal/scan"
 )
 
 // jnode is a JSON value that keeps key order.
@@ -35,6 +37,11 @@ func parseJSON(text string) (*Dataset, error) {
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return nil, fail.New("bad-json", "This JSON file has extra text after the end of the data, so I stopped.")
+	}
+	// The standard JSON decoder replaces lone surrogate escapes. Refuse
+	// those inputs instead of silently changing a name before scrubbing it.
+	if err := jsonsafe.Validate([]byte(text)); err != nil {
+		return nil, errJSON()
 	}
 	d := &Dataset{root: root, colOf: map[string]int{}}
 	add := func(path, v string, rec int) {
@@ -105,6 +112,14 @@ func readNode(dec *json.Decoder, depth int) (*jnode, error) {
 				if !ok {
 					return nil, errJSON()
 				}
+				// Validate the tree, not only its flattened scalar columns: a
+				// key on an empty object or array still reaches the output.
+				if hasHidden(k) {
+					return nil, fail.New("hidden-char", "A JSON name (key) holds a hidden character. Remove it, then try again.")
+				}
+				if scan.HasStandin(k) {
+					return nil, fail.New("standin-in-input", "A JSON name (key) already holds text shaped like a stand-in (like [NAME_1]). Restore could change it into a real value. Change that name in the raw file, then try again.")
+				}
 				if seen[k] {
 					return nil, fail.New("json-dup", "This JSON file has the same name twice in one object, so I am not sure which value is right. Fix it, then try again.")
 				}
@@ -161,21 +176,36 @@ func join(prefix, k string) string {
 // flatten walks a record and calls emit for each scalar with its path.
 func flatten(prefix string, obj *jnode, emit func(path, v string)) error {
 	for i, k := range obj.keys {
+		// Dots and [] describe structure in the config; accepting them as
+		// literal field names would let a keep rule select a different field.
+		// Top-level record keys are values and do not pass through flatten.
+		if strings.TrimSpace(k) == "" || strings.ContainsAny(k, ".[]") || k == KeyColumn {
+			return fail.New("json-key", "A JSON field name is blank or uses reserved text (a dot, square brackets or (key)). That could give two fields the same config name. Rename that field, then try again.")
+		}
 		v := obj.vals[i]
 		p := join(prefix, k)
 		switch v.kind {
 		case 's':
 			emit(p, v.str)
 		case 'o':
+			if len(v.keys) == 0 {
+				emit(p, "")
+			}
 			if err := flatten(p, v, emit); err != nil {
 				return err
 			}
 		case 'a':
+			if len(v.vals) == 0 {
+				emit(p+"[]", "")
+			}
 			for _, e := range v.vals {
 				switch e.kind {
 				case 's':
 					emit(p+"[]", e.str)
 				case 'o':
+					if len(e.keys) == 0 {
+						emit(p+"[]", "")
+					}
 					if err := flatten(p+"[]", e, emit); err != nil {
 						return err
 					}

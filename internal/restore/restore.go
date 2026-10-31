@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/RKelln/standin/internal/fail"
+	"github.com/RKelln/standin/internal/jsonsafe"
 	"github.com/RKelln/standin/internal/mapping"
 )
 
@@ -43,7 +44,7 @@ type Result struct {
 	Unknown   []Finding // exact form, but not in the mapping
 	NearMiss  []Finding // almost a stand-in
 	Spellings []string  // stand-ins used that have more than one spelling
-	Blocked   []Finding // known stand-ins left alone: inside a link or a formula
+	Blocked   []Finding // known stand-ins left alone: unsafe link, formula or tag context
 }
 
 // Issues reports whether there is anything for the person to look at.
@@ -62,6 +63,12 @@ var (
 	// A web link, or the target of a Markdown or HTML link. A real value put
 	// there could be sent out when the file is opened.
 	linkRe = regexp.MustCompile(`(?i)(?:https?://|www\.|\]\(|\bsrc\s*=\s*["']?|\bhref\s*=\s*["']?)[^\s"'<>)]*`)
+	// Values must not become part of an HTML tag. This also catches tags
+	// introduced by a value, rather than present in the agent's answer.
+	tagRe = regexp.MustCompile(`(?is)</?[a-z][a-z0-9:-]*(?:\s[^<>]*)?/?>`)
+	// Plain text restore is not an HTML sanitizer. Refuse active containers,
+	// including unclosed ones, rather than insert secrets into their bodies.
+	activeRe = regexp.MustCompile(`(?i)<\s*(?:script|style|iframe|object|embed|svg|math|template|noscript)\b`)
 )
 
 // isFormula reports a spreadsheet cell that a program may run as a formula.
@@ -72,40 +79,101 @@ func isFormula(cell string) bool {
 
 // Restore replaces stand-ins in text.
 func Restore(text string, m *mapping.Mapping, mode Mode) (Result, error) {
+	if mode == Text && activeRe.MatchString(text) {
+		return Result{}, fail.New("active-content", "This file holds web-page code that may run when opened. I did not restore it. Copy the words into a plain text file without that code, then try again.")
+	}
+	if mode == CSV || mode == TSV {
+		for i := 0; i < len(text); i++ {
+			if text[i] == '\r' && (i+1 == len(text) || text[i+1] != '\n') {
+				return Result{}, fail.New("bad-csv", "This table uses lone carriage returns, so I cannot tell where its rows end. Save it with normal line endings, then try again.")
+			}
+		}
+	}
+	if mode == JSON && jsonsafe.Validate([]byte(text)) != nil {
+		return Result{}, fail.New("bad-json", "This JSON file is not valid, or repeats a name in one object. I did not restore it. Fix the file, or save the fragment as .txt and try again.")
+	}
 	var r Result
 	analyze(text, m, &r)
 	used := map[string]bool{}
-	// replace swaps known stand-ins in s, except inside links (or anywhere
-	// in s when blockAll is set, for formulas). lineOf gives the line of a
-	// place in s.
-	replace := func(s string, esc func(string) string, blockAll bool, lineOf func(int) int) string {
+	// replace swaps known stand-ins in s, except where they would put a real
+	// value into a link, formula or HTML tag. Check both the source and the
+	// expanded result. lineOf gives the source line of a place in s.
+	replace := func(s string, esc func(string) string, formulaCell bool, lineOf func(int) int) string {
 		links := linkRe.FindAllStringIndex(s, -1)
-		var b strings.Builder
-		last := 0
+		links = append(links, tagRe.FindAllStringIndex(s, -1)...)
+		type replacement struct {
+			a, b       int
+			tok, value string
+			blocked    bool
+			outA, outB int
+		}
+		var reps []replacement
 		for _, loc := range exact.FindAllStringIndex(s, -1) {
 			tok := s[loc[0]:loc[1]]
 			e, ok := m.Lookup(tok)
 			if !ok {
 				continue
 			}
-			blocked := blockAll
+			blocked := formulaCell && isFormula(s)
 			for _, l := range links {
 				if loc[0] >= l[0] && loc[0] < l[1] {
 					blocked = true
 				}
 			}
-			if blocked {
-				r.Blocked = append(r.Blocked, Finding{Line: lineOf(loc[0]), Text: tok})
-				continue
-			}
-			b.WriteString(s[last:loc[0]])
-			b.WriteString(esc(e.Value()))
-			last = loc[1]
-			r.Replaced++
-			used[tok] = true
+			reps = append(reps, replacement{a: loc[0], b: loc[1], tok: tok, value: esc(e.Value()), blocked: blocked})
 		}
-		b.WriteString(s[last:])
-		return b.String()
+		// Rebuild after blocking a substitution: two adjacent stand-ins can
+		// jointly form a link, so checking each value alone is not enough.
+		var out string
+		for {
+			var b strings.Builder
+			last := 0
+			for i := range reps {
+				p := &reps[i]
+				b.WriteString(s[last:p.a])
+				p.outA = b.Len()
+				if p.blocked {
+					b.WriteString(p.tok)
+				} else {
+					b.WriteString(p.value)
+				}
+				p.outB = b.Len()
+				last = p.b
+			}
+			b.WriteString(s[last:])
+			out = b.String()
+			hazards := linkRe.FindAllStringIndex(out, -1)
+			hazards = append(hazards, tagRe.FindAllStringIndex(out, -1)...)
+			changed := false
+			for i := range reps {
+				p := &reps[i]
+				if p.blocked {
+					continue
+				}
+				unsafe := formulaCell && isFormula(out)
+				for _, h := range hazards {
+					if p.outA < h[1] && p.outB > h[0] {
+						unsafe = true
+					}
+				}
+				if unsafe {
+					p.blocked = true
+					changed = true
+				}
+			}
+			if !changed {
+				break
+			}
+		}
+		for _, p := range reps {
+			if p.blocked {
+				r.Blocked = append(r.Blocked, Finding{Line: lineOf(p.a), Text: p.tok})
+			} else {
+				r.Replaced++
+				used[p.tok] = true
+			}
+		}
+		return out
 	}
 	starts := lineStarts(text)
 	textLine := func(pos int) int { return lineAt(starts, pos) }
@@ -125,8 +193,6 @@ func Restore(text string, m *mapping.Mapping, mode Mode) (Result, error) {
 		}
 		rd := csv.NewReader(strings.NewReader(text))
 		rd.Comma = comma
-		rd.FieldsPerRecord = -1
-		rd.LazyQuotes = true
 		var buf bytes.Buffer
 		w := csv.NewWriter(&buf)
 		w.Comma = comma
@@ -141,14 +207,20 @@ func Restore(text string, m *mapping.Mapping, mode Mode) (Result, error) {
 			for i := range rec {
 				line, _ := rd.FieldPos(i)
 				cellLine := func(pos int) int { return line + strings.Count(rec[i][:pos], "\n") }
-				rec[i] = replace(rec[i], plain, isFormula(rec[i]), cellLine)
+				rec[i] = replace(rec[i], plain, true, cellLine)
 			}
 			if err := w.Write(rec); err != nil {
 				return Result{}, fail.New("write", "I could not build the restored table.")
 			}
 		}
 		w.Flush()
+		if w.Error() != nil {
+			return Result{}, fail.New("write", "I could not build the restored table.")
+		}
 		r.Out = buf.String()
+	}
+	if mode == JSON && jsonsafe.Validate([]byte(r.Out)) != nil {
+		return Result{}, fail.New("bad-json", "Putting the real values back would make invalid JSON or repeat a name in one object. I wrote nothing. Rename the object entries, then try again.")
 	}
 	for tok := range used {
 		if e, _ := m.Lookup(tok); len(e.Spellings) > 1 {

@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/RKelln/standin/internal/store"
 )
 
 // Tools the PreToolUse hook knows. init uses ToolMatcher for the hook matcher.
@@ -20,21 +22,10 @@ var (
 	shellTools = map[string]bool{"Bash": true, "PowerShell": true}
 )
 
-// ToolMatcher is the PreToolUse matcher that sends every tool this hook knows to it.
+// ToolMatcher sends every tool to the guard. Unknown tools must reach the
+// refusal branch rather than silently bypassing the guard's matcher.
 func ToolMatcher() string {
-	var names []string
-	for _, m := range []map[string]string{readTools, writeTools} {
-		for k := range m {
-			names = append(names, k)
-		}
-	}
-	for _, m := range []map[string]bool{searchTool, shellTools} {
-		for k := range m {
-			names = append(names, k)
-		}
-	}
-	sort.Strings(names)
-	return strings.Join(names, "|")
+	return ".*"
 }
 
 type claude struct {
@@ -86,6 +77,9 @@ func zoneAdvice(z Zone) string {
 }
 
 func (c *claude) preToolUse() int {
+	if err := store.CheckReady(c.g.Store); err != nil {
+		return c.deny(err.Error())
+	}
 	var input map[string]any
 	if len(c.in.ToolInput) == 0 || json.Unmarshal(c.in.ToolInput, &input) != nil || input == nil {
 		return c.deny("the tool input is missing or not a JSON object, so this is blocked to be safe.")
@@ -100,6 +94,9 @@ func (c *claude) preToolUse() int {
 	}
 	tool := c.in.ToolName
 	switch {
+	case tool == "AskUserQuestion" || tool == "TodoWrite" || tool == "TaskCreate" || tool == "TaskUpdate" || tool == "TaskGet" || tool == "TaskList" || tool == "EnterPlanMode" || tool == "ExitPlanMode":
+		// These tools manage the conversation or task list, not local files.
+		return exitOK
 	case readTools[tool] != "":
 		p, present, ok := str(readTools[tool])
 		if !present || !ok || p == "" {

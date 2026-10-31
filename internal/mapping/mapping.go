@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -19,6 +20,8 @@ import (
 	"unicode"
 
 	"github.com/RKelln/standin/internal/fail"
+	"github.com/RKelln/standin/internal/jsonsafe"
+	"github.com/RKelln/standin/internal/store"
 )
 
 // Categories are the stand-in categories Standin knows.
@@ -74,6 +77,9 @@ func New() *Mapping {
 
 // Load reads the table from path. A missing file gives an empty table and exists=false.
 func Load(path string) (m *Mapping, exists bool, err error) {
+	if err := store.CheckReady(filepath.Dir(path)); err != nil {
+		return nil, false, err
+	}
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return New(), false, nil
@@ -87,6 +93,9 @@ func Load(path string) (m *Mapping, exists bool, err error) {
 
 // Parse reads a table from JSON and checks it.
 func Parse(b []byte) (*Mapping, error) {
+	if jsonsafe.Validate(b) != nil {
+		return nil, fail.New("mapping-bad", "The mapping file is damaged, so I stopped. Restore it from a backup.")
+	}
 	var f file
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
@@ -97,6 +106,7 @@ func Parse(b []byte) (*Mapping, error) {
 		return nil, fail.New("mapping-bad", "The mapping file has a version I do not know (%d).", f.Version)
 	}
 	m := New()
+	counts := map[string]int{}
 	for _, e := range f.Entries {
 		sm := StandinPattern.FindStringSubmatch(e.Standin)
 		if sm == nil || sm[0] != e.Standin || sm[1] != e.Category || !ValidCategory(e.Category) || len(e.Spellings) == 0 {
@@ -109,13 +119,27 @@ func Parse(b []byte) (*Mapping, error) {
 		if _, dup := m.byKey[k]; dup {
 			return nil, fail.New("mapping-bad", "The mapping file is damaged (a value is listed twice), so I stopped.")
 		}
-		n, _ := strconv.Atoi(sm[2])
+		n, err := strconv.Atoi(sm[2])
+		if err != nil || n <= 0 || n > len(f.Entries) || (e.Kept && e.Category != "NAME") {
+			return nil, fail.New("mapping-bad", "The mapping file is damaged (a bad row), so I stopped.")
+		}
+		for _, spelling := range e.Spellings {
+			if strings.TrimSpace(spelling) == "" || valueKey(spelling) != e.Key {
+				return nil, fail.New("mapping-bad", "The mapping file is damaged (a value does not match its key), so I stopped.")
+			}
+		}
 		if n > m.next[e.Category] {
 			m.next[e.Category] = n
 		}
 		m.byKey[k] = len(m.Entries)
 		m.byStandin[e.Standin] = len(m.Entries)
 		m.Entries = append(m.Entries, e)
+		counts[e.Category]++
+	}
+	for category, count := range counts {
+		if m.next[category] != count {
+			return nil, fail.New("mapping-bad", "The mapping file is damaged (some stand-ins are missing), so I stopped. Restore it from a backup.")
+		}
 	}
 	return m, nil
 }
@@ -150,10 +174,7 @@ func Normalize(s string) string {
 // Get returns the stand-in for value in category, adding one if needed.
 // The caller must not pass an empty value.
 func (m *Mapping) Get(category, value string) string {
-	key := Normalize(value)
-	if key == "" {
-		key = strings.ToLower(strings.TrimSpace(value))
-	}
+	key := valueKey(value)
 	k := category + "\x00" + key
 	if i, ok := m.byKey[k]; ok {
 		e := &m.Entries[i]
@@ -176,6 +197,14 @@ func (m *Mapping) Get(category, value string) string {
 	m.Entries = append(m.Entries, Entry{Standin: st, Category: category, Key: key, Spellings: []string{value}})
 	m.added++
 	return st
+}
+
+func valueKey(value string) string {
+	key := Normalize(value)
+	if key == "" {
+		key = strings.ToLower(strings.TrimSpace(value))
+	}
+	return key
 }
 
 // Lookup finds the row for a stand-in.

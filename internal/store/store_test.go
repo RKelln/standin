@@ -8,7 +8,7 @@ import (
 )
 
 func TestPrivateDirOutsideProject(t *testing.T) {
-	base := t.TempDir()
+	base := canonicalTempDir(t)
 	proj := filepath.Join(base, "shop")
 	os.MkdirAll(proj, 0o755)
 	d, err := PrivateDir(proj, "", filepath.Join(base, "home"))
@@ -30,7 +30,7 @@ func TestEnsurePerms(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("no unix modes")
 	}
-	d := filepath.Join(t.TempDir(), "a", "b")
+	d := filepath.Join(canonicalTempDir(t), "a", "b")
 	if err := Ensure(d); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestEnsurePerms(t *testing.T) {
 }
 
 func TestWriteAllNoneOnFailure(t *testing.T) {
-	dir := t.TempDir()
+	dir := canonicalTempDir(t)
 	good := filepath.Join(dir, "good.csv")
 	os.WriteFile(good, []byte("old"), 0o644)
 	// A path under a file cannot be made: the whole write must fail and change nothing.
@@ -78,7 +78,7 @@ func TestWriteAllNoneOnFailure(t *testing.T) {
 }
 
 func TestRenameFailureRollsBack(t *testing.T) {
-	dir := t.TempDir()
+	dir := canonicalTempDir(t)
 	a := filepath.Join(dir, "a.txt")
 	os.WriteFile(a, []byte("old a"), 0o644)
 	// The second target is a folder, so the rename onto it fails after a is renamed.
@@ -94,7 +94,7 @@ func TestRenameFailureRollsBack(t *testing.T) {
 }
 
 func TestErrorsRecorded(t *testing.T) {
-	d := t.TempDir()
+	d := canonicalTempDir(t)
 	for i := 0; i < 12; i++ {
 		RecordError(d, "scrub", "ragged")
 	}
@@ -105,7 +105,7 @@ func TestErrorsRecorded(t *testing.T) {
 }
 
 func TestPrivateDirFollowsSymlinks(t *testing.T) {
-	base := t.TempDir()
+	base := canonicalTempDir(t)
 	real := filepath.Join(base, "shop")
 	os.MkdirAll(real, 0o755)
 	link := filepath.Join(base, "link")

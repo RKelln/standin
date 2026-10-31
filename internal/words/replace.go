@@ -6,13 +6,16 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/RKelln/standin/internal/fail"
+	"github.com/RKelln/standin/internal/jsonsafe"
 	"github.com/RKelln/standin/internal/mapping"
 	"github.com/RKelln/standin/internal/scan"
+	"github.com/RKelln/standin/internal/store"
 )
 
 // Category is the stand-in category for a swapped word.
@@ -102,6 +105,9 @@ func NewChoices() *Choices { return &Choices{Keep: map[string]bool{}, Swap: map[
 
 // LoadChoices reads words.json. A missing file gives empty choices and exists=false.
 func LoadChoices(path string) (ch *Choices, raw []byte, exists bool, err error) {
+	if err := store.CheckReady(filepath.Dir(path)); err != nil {
+		return nil, nil, false, err
+	}
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return NewChoices(), nil, false, nil
@@ -112,15 +118,23 @@ func LoadChoices(path string) (ch *Choices, raw []byte, exists bool, err error) 
 	var f choicesFile
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&f); err != nil || f.Version != 1 {
+	if err := dec.Decode(&f); err != nil || f.Version != 1 || jsonsafe.Validate(b) != nil {
 		return nil, nil, true, fail.New("words-bad", "The word choices file (words.json, in the private folder) is damaged. Fix it, or delete it and run `standin approve` again.")
 	}
 	ch = NewChoices()
 	for _, w := range f.Keep {
-		ch.Keep[Key(w)] = true
+		k := Key(w)
+		if strings.TrimSpace(k) == "" || ch.Keep[k] {
+			return nil, nil, true, fail.New("words-bad", "The word choices file (words.json) has a blank word or the same word twice. Fix it, then run `standin approve` again.")
+		}
+		ch.Keep[k] = true
 	}
 	for _, w := range f.Swap {
-		if k := Key(w); !ch.Keep[k] {
+		k := Key(w)
+		if strings.TrimSpace(k) == "" || ch.Swap[k] {
+			return nil, nil, true, fail.New("words-bad", "The word choices file (words.json) has a blank word or the same word twice. Fix it, then run `standin approve` again.")
+		}
+		if !ch.Keep[k] {
 			ch.Swap[k] = true
 		}
 	}

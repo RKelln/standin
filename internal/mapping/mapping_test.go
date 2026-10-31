@@ -1,6 +1,9 @@
 package mapping
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalize(t *testing.T) {
 	cases := map[string]string{
@@ -67,5 +70,30 @@ func TestDamagedRefused(t *testing.T) {
 		if _, err := Parse([]byte(b)); err == nil {
 			t.Errorf("want refusal for %s", b)
 		}
+	}
+}
+
+func TestReviewPrivateMappingIntegrity(t *testing.T) {
+	m := New()
+	m.Get("PERSON", "Zelda Quorn")
+	good := string(m.Marshal())
+	for _, damaged := range []string{
+		good + `{}`,
+		strings.Replace(good, `"version": 1`, `"version": 1, "version": 1`, 1),
+		strings.Replace(good, `"zelda quorn"`, `"different key"`, 1),
+		strings.Replace(good, `[PERSON_1]`, `[PERSON_999999999999999999999999]`, 1),
+		strings.Replace(good, `[PERSON_1]`, `[PERSON_9223372036854775806]`, 1),
+		strings.Replace(good, `[PERSON_1]`, `[PERSON_2]`, 1),
+		strings.Replace(good, `"Zelda Quorn"`, `""`, 1),
+		strings.Replace(good, `"Zelda Quorn"`, `"\ud800"`, 1),
+	} {
+		if _, err := Parse([]byte(damaged)); err == nil {
+			t.Fatal("damaged mapping accepted")
+		}
+	}
+	m = New()
+	m.Get("VALUE", ".")
+	if _, err := Parse(m.Marshal()); err != nil {
+		t.Fatal("valid punctuation-only mapping refused:", err)
 	}
 }

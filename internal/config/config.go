@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/RKelln/standin/internal/fail"
+	"github.com/RKelln/standin/internal/jsonsafe"
 	"github.com/RKelln/standin/internal/mapping"
 )
 
@@ -127,6 +128,9 @@ func bad(format string, args ...any) error {
 
 // Parse reads and checks a config.
 func Parse(b []byte) (*Config, error) {
+	if jsonsafe.Validate(b) != nil {
+		return nil, bad("it is not valid JSON, has a name listed twice, or has broken text.")
+	}
 	var c Config
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()

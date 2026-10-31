@@ -22,7 +22,8 @@ const (
 )
 
 // Secret file names. They live in the private store, but a copy anywhere is still the secret.
-var secretNames = []string{"mapping.json", "approval.json", "words.json"}
+var secretNames = []string{"mapping.json", "approval.json", "words.json",
+	".standin-previous-mapping.json", ".standin-previous-approval.json", ".standin-previous-words.json"}
 
 // StoreDir returns the private store folder for a project, using the core
 // rule (internal/store.PrivateDir): $STANDIN_HOME/projects/<name>-<hash>/,

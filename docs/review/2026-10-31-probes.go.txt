@@ -1,0 +1,133 @@
+package cli
+
+import (
+	"fmt"
+	"github.com/RKelln/standin/internal/hook"
+	"github.com/RKelln/standin/internal/mapping"
+	"github.com/RKelln/standin/internal/store"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+)
+
+func TestReviewProbes(t *testing.T) {
+	t.Run("json-path-collision", func(t *testing.T) {
+		p := newTP(t)
+		p.write("raw/records.json", `[{"meta.city":"public","meta":{"city":"Zelda Quorn"}}]`)
+		p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.json","columns":{"meta.city":{"action":"keep"}}}]}`)
+		t.Logf("approve: %+v", p.run("yes\nyes\nyes\n", true, "approve"))
+		t.Logf("scrub: %+v", p.run("", false, "scrub"))
+		t.Log(p.read("scrubbed/records.json"))
+	})
+	t.Run("empty-container-key", func(t *testing.T) {
+		p := newTP(t)
+		p.write("raw/records.json", `[{"Customer":"Zelda Quorn","[PERSON_1]":{}}]`)
+		p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.json","columns":{"Customer":{"action":"tokenize","category":"PERSON"}}}]}`)
+		t.Logf("shape: %+v", p.run("", false, "shape"))
+		t.Logf("scrub: %+v", p.run("", false, "scrub"))
+		t.Log(p.read("scrubbed/records.json"))
+		t.Logf("restore: %+v", p.run("", false, "restore", "scrubbed/records.json"))
+		t.Log(p.read("restored/records.json"))
+	})
+	t.Run("private-symlink", func(t *testing.T) {
+		p := newTP(t)
+		p.write("cache/placeholder", "x")
+		alias := filepath.Join(filepath.Dir(p.dir), "alias")
+		if err := os.Symlink(filepath.Join(p.dir, "cache"), alias); err != nil {
+			t.Fatal(err)
+		}
+		d, err := store.PrivateDir(p.dir, alias, "")
+		t.Logf("private directory inside project accepted: %s, error: %v", d, err)
+		p.write("raw/inv.csv", "Customer\nZelda Quorn\n")
+		p.write("standin.config.json", `{"version":1,"files":[]}`)
+		t.Logf("scrub: %+v", p.run("", false, "scrub", "--private", alias))
+		t.Logf("mapping now in project: %v", p.exists("cache/mapping.json"))
+	})
+	t.Run("restore-output-symlink", func(t *testing.T) {
+		p := newTP(t)
+		p.write("raw/inv.csv", "Customer\nZelda Quorn\n")
+		p.write("standin.config.json", `{"version":1,"files":[]}`)
+		p.run("", false, "scrub")
+		p.write("scrubbed/jobs/answer.md", "Dear [VALUE_1]")
+		if err := os.Mkdir(filepath.Join(p.dir, "restored"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(p.dir, "scrubbed"), filepath.Join(p.dir, "restored", "jobs")); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("restore: %+v", p.run("", false, "restore", "scrubbed/jobs/answer.md"))
+		t.Logf("in scrubbed: %s", p.read("scrubbed/answer.md"))
+		g := hook.Guard{Project: p.dir, Store: p.privDir(), Home: p.home}
+		t.Logf("hook zone for leaked output: %v", g.ZoneOf(filepath.Join(p.dir, "scrubbed", "answer.md"), p.dir))
+	})
+	t.Run("duplicate-csv-header", func(t *testing.T) {
+		p := newTP(t)
+		p.write("raw/inv.csv", "Status,Status\npaid,Zelda Quorn\n")
+		p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.csv","columns":{"Status":{"action":"keep"}}}]}`)
+		p.run("yes\nyes\nyes\n", true, "approve")
+		t.Logf("scrub: %+v", p.run("", false, "scrub"))
+		t.Log(p.read("scrubbed/inv.csv"))
+	})
+	t.Run("formula-created-by-restore", func(t *testing.T) {
+		p := newTP(t)
+		p.write("raw/inv.csv", "Notes\n=1+1\n")
+		p.write("standin.config.json", `{"version":1,"files":[]}`)
+		p.run("", false, "scrub")
+		t.Logf("restore: %+v", p.run("", false, "restore", "scrubbed/inv.csv"))
+		t.Log(p.read("restored/inv.csv"))
+	})
+	t.Run("concurrent-scrubs", func(t *testing.T) {
+		p := newTP(t)
+		p.write("standin.config.json", `{"version":1,"files":[]}`)
+		for i := 0; i < 16; i++ {
+			p.write(fmt.Sprintf("raw/file%d.csv", i), fmt.Sprintf("Customer\nInvented Customer %d\n", i))
+		}
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i := 0; i < 16; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				<-start
+				r := p.run("", false, "scrub", fmt.Sprintf("raw/file%d.csv", i))
+				if r.code == 2 {
+					t.Logf("refused: %+v", r)
+				}
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		m, _, err := mapping.Load(filepath.Join(p.privDir(), "mapping.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("16 distinct values scrubbed; mapping entries persisted: %d", len(m.Entries))
+		t.Logf("file0: %s", p.read("scrubbed/file0.csv"))
+		t.Logf("file15: %s", p.read("scrubbed/file15.csv"))
+	})
+	t.Run("malformed-json-restore", func(t *testing.T) {
+		p := newTP(t)
+		p.write("raw/inv.csv", "Customer\nZelda Quorn\n")
+		p.write("standin.config.json", `{"version":1,"files":[]}`)
+		p.run("", false, "scrub")
+		p.write("answer.json", `{"Who":"[VALUE_1]"`)
+		t.Logf("restore: %+v", p.run("", false, "restore", "answer.json"))
+		t.Log(p.read("restored/answer.json"))
+	})
+	t.Run("init-partial-failure", func(t *testing.T) {
+		p := newTP(t)
+		p.write("scrubbed", "a file blocks this folder")
+		t.Logf("init: %+v", p.run("", false, "init", "--harness", "codex"))
+		t.Logf("shape created despite Nothing was changed: %v", p.exists("shape"))
+	})
+	t.Run("single-name-filename", func(t *testing.T) {
+		p := newTP(t)
+		p.write("raw/Oksana.csv", "Customer\nOksana\n")
+		p.write("standin.config.json", `{"version":1,"files":[]}`)
+		t.Logf("shape: %+v", p.run("", false, "shape"))
+		t.Logf("scrub: %+v", p.run("", false, "scrub"))
+		t.Logf("shape title: %s", strings.Split(p.read("shape/Oksana.csv.shape.md"), "\n")[0])
+	})
+}

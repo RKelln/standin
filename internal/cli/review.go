@@ -192,6 +192,15 @@ func runApprove(c *ctx) error {
 	if err != nil {
 		return err
 	}
+	lease, err := store.Lock(privDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if lease.Close() != nil {
+			c.warn("I could not unlock the private folder after this run. Ask the person to check it before running Standin again.")
+		}
+	}()
 	out := c.env.Stdout
 	fmt.Fprintf(out, "Config: %s\n\n", config.FileName)
 	printReview(out, cfg)
@@ -295,9 +304,9 @@ func runApprove(c *ctx) error {
 	if ch != nil {
 		wb := ch.Marshal()
 		a.WordsSHA256 = config.HashBytes(wb)
-		outs = append(outs, store.Out{Path: filepath.Join(privDir, store.WordsFile), Data: wb, Perm: 0o600})
+		outs = append(outs, store.Out{Path: filepath.Join(privDir, store.WordsFile), Data: wb, Perm: 0o600, Root: privDir})
 	}
-	outs = append(outs, store.Out{Path: filepath.Join(privDir, store.ApprovalFile), Data: store.MarshalApproval(a), Perm: 0o600})
+	outs = append(outs, store.Out{Path: filepath.Join(privDir, store.ApprovalFile), Data: store.MarshalApproval(a), Perm: 0o600, Root: privDir})
 	if err := store.WriteAll(outs); err != nil {
 		return err
 	}
@@ -431,8 +440,8 @@ func StdoutIsTerminal() bool { return isTerminal(os.Stdout) }
 // StderrIsTerminal reports whether stderr is a terminal.
 func StderrIsTerminal() bool { return isTerminal(os.Stderr) }
 
-// isTerminal: a character device that is not the null device (/dev/null is a
-// character device too, so a program could pass it off as a screen).
+// isTerminal requires an OS terminal or console, not merely a character
+// device. A pseudo-terminal still does not prove that a person is present.
 func isTerminal(f *os.File) bool {
 	st, err := f.Stat()
 	if err != nil || st.Mode()&os.ModeCharDevice == 0 {
@@ -441,5 +450,5 @@ func isTerminal(f *os.File) bool {
 	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(st, null) {
 		return false
 	}
-	return true
+	return terminalDevice(f)
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/RKelln/standin/internal/hook"
+	"github.com/RKelln/standin/internal/jsonsafe"
 )
 
 // MinClaude is the first Claude Code version with "onFailure": "block" on hooks
@@ -71,6 +72,7 @@ func DenyRules(store, home string) []string {
 		"Read(./restored/**)", "Edit(./restored/**)",
 		"Read(**/mapping.json)", "Edit(**/mapping.json)",
 		"Read(**/words.json)", "Edit(**/words.json)",
+		"Read(**/.standin-previous-*)", "Edit(**/.standin-previous-*)",
 	}
 	for _, d := range []string{store, home} {
 		if d != "" && filepath.IsAbs(d) && !strings.Contains(d, `\`) {
@@ -153,6 +155,9 @@ func readSettings(proj, rel string) (*settingsFile, error) {
 	}
 	f.old, f.exists = old, err == nil
 	if f.exists && len(bytes.TrimSpace(old)) > 0 {
+		if jsonsafe.Validate(old) != nil {
+			return nil, errors.New(rel + " is not a JSON object standin can read, or it repeats a name. Fix it by hand (or move it away), then run standin init again.")
+		}
 		dec := json.NewDecoder(bytes.NewReader(old))
 		dec.UseNumber()
 		if err := dec.Decode(&f.m); err != nil || f.m == nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -493,8 +494,8 @@ func squash(s string) string { return strings.Join(strings.Fields(strings.ToLowe
 
 func TestToolMatcher(t *testing.T) {
 	m := ToolMatcher()
-	for _, want := range []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"} {
-		if !strings.Contains("|"+m+"|", "|"+want+"|") {
+	for _, want := range []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash", "mcp__files__read", "FutureFileTool"} {
+		if !regexp.MustCompile(m).MatchString(want) {
 			t.Errorf("matcher %q lacks %s", m, want)
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -188,24 +189,51 @@ type run struct {
 // prepare reads and plans every file, then runs pass 1: values of tokenized
 // and dropped columns join the mapping, so every known value is in it before
 // any scan or word check. It writes nothing.
-func (c *ctx) prepare(cfg *config.Config, files []rawFile, m *mapping.Mapping, ch *words.Choices) (*run, error) {
+func (c *ctx) prepare(cfg *config.Config, files []rawFile, m *mapping.Mapping, ch *words.Choices) (result *run, err error) {
+	// A later column may teach us that an earlier file name is private.
+	// Publish diagnostics only once every filename passed the full check.
+	var messages bytes.Buffer
+	stderr := c.env.Stderr
+	c.env.Stderr = &messages
+	defer func() {
+		c.env.Stderr = stderr
+		if err == nil {
+			fmt.Fprint(stderr, messages.String())
+		}
+	}()
 	r := &run{m: m, choices: ch}
 	for _, f := range files {
-		if dataLikeName(f.inRaw) {
+		if dataLikeName(f.inRaw) || knownDataName(f.inRaw, m) {
 			return nil, fail.New("name-is-data", "One file name looks like private data (a name, email or number), and the scrubbed copy would keep that name. Rename the file in raw/ to something plain, like invoices.csv, then try again.")
 		}
 		d, err := c.load(f)
 		if err != nil {
 			return nil, err
 		}
-		if err := refuseStandins(f, d); err != nil {
+		r.sfs = append(r.sfs, &scrubFile{f: f, d: d})
+	}
+	// Before naming a file in any rule/input refusal, check its name against
+	// every value in the batch. Even a later file can reveal an earlier name.
+	names := mapping.New()
+	for _, sf := range r.sfs {
+		for _, values := range sf.d.Values {
+			for _, value := range values {
+				if strings.TrimSpace(value) != "" {
+					names.Get("VALUE", value)
+				}
+			}
+		}
+	}
+	for _, sf := range r.sfs {
+		if knownDataName(sf.f.inRaw, names) {
+			return nil, fail.New("name-is-data", "One file name repeats a value in the raw files. Rename the file to something plain, like invoices.csv, then try again.")
+		}
+		if err := refuseStandins(sf.f, sf.d); err != nil {
 			return nil, err
 		}
-		sf := &scrubFile{f: f, d: d}
 		if err := c.planColumns(cfg, sf); err != nil {
 			return nil, err
 		}
-		r.sfs = append(r.sfs, sf)
 	}
 	c.unusedTextNames(cfg, r.sfs)
 	// Pass 1. Dropped values join the mapping too (they are not written
@@ -284,6 +312,11 @@ func (c *ctx) prepare(cfg *config.Config, files []rawFile, m *mapping.Mapping, c
 			}
 		}
 	}
+	for _, sf := range r.sfs {
+		if knownDataName(sf.f.inRaw, m) {
+			return nil, fail.New("name-is-data", "One file name holds a private value Standin knows. Rename the file in raw/ to something plain, like invoices.csv, then try again.")
+		}
+	}
 	return r, nil
 }
 
@@ -337,6 +370,15 @@ func runScrub(c *ctx) error {
 	if err != nil {
 		return err
 	}
+	lease, err := store.Lock(privDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if lease.Close() != nil {
+			c.warn("I could not unlock the private folder after this run. Ask the person to check it before running Standin again.")
+		}
+	}()
 	approved, why, err := c.approvalState(cfg, privDir)
 	if err != nil {
 		return err
@@ -348,9 +390,18 @@ func runScrub(c *ctx) error {
 		return fail.New("not-approved", "%s The config keeps or scans some columns, or checks the words in free text, so a person must approve it first. I wrote nothing. Run `standin approve` yourself, in your own terminal, then run `standin scrub` again.", why)
 	}
 	mapPath := filepath.Join(privDir, store.MappingFile)
-	m, _, err := mapping.Load(mapPath)
+	m, exists, err := mapping.Load(mapPath)
 	if err != nil {
 		return err
+	}
+	if !exists {
+		entries, err := os.ReadDir(filepath.Join(c.project, "scrubbed"))
+		if err != nil && !os.IsNotExist(err) {
+			return fail.New("read", "I could not check the old scrubbed files safely.")
+		}
+		if len(entries) > 0 {
+			return fail.New("mapping-missing", "Scrubbed files exist, but their mapping is missing. I stopped so old stand-ins are not given to different values. Ask the person to restore the matching private folder from a backup, or move the old scrubbed files away before starting a new mapping.")
+		}
 	}
 	ch, err := loadChoices(privDir)
 	if err != nil {
@@ -453,9 +504,9 @@ func runScrub(c *ctx) error {
 	if _, err := c.privateDir(true); err != nil {
 		return err
 	}
-	outs := []store.Out{{Path: mapPath, Data: m.Marshal(), Perm: 0o600}}
+	outs := []store.Out{{Path: mapPath, Data: m.Marshal(), Perm: 0o600, Root: privDir}}
 	for _, sf := range r.sfs {
-		outs = append(outs, store.Out{Path: filepath.Join(c.project, "scrubbed", filepath.FromSlash(sf.f.inRaw)), Data: sf.out, Perm: 0o644})
+		outs = append(outs, store.Out{Path: filepath.Join(c.project, "scrubbed", filepath.FromSlash(sf.f.inRaw)), Data: sf.out, Perm: 0o644, Root: filepath.Join(c.project, "scrubbed")})
 	}
 	if err := store.WriteAll(outs); err != nil {
 		return err

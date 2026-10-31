@@ -3,6 +3,8 @@
 package store
 
 import (
+	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/RKelln/standin/internal/fail"
+	"github.com/RKelln/standin/internal/jsonsafe"
 )
 
 // File names in the private folder.
@@ -51,6 +54,13 @@ func PrivateDir(project, override, home string) (string, error) {
 	}
 	if Inside(dir, absProject) {
 		return "", fail.New("private-inside", "The private folder must not be inside the project folder, because the AI can read the project folder. Choose a folder outside it.")
+	}
+	dir, err = canonical(dir)
+	if err != nil {
+		return "", fail.New("private", "I could not check where the private folder leads. Use a real folder outside the project.")
+	}
+	if Inside(dir, absProject) {
+		return "", fail.New("private-inside", "The private folder leads inside the project folder. Choose a real folder outside it, so the AI cannot read the mapping.")
 	}
 	return dir, nil
 }
@@ -128,7 +138,7 @@ func SameNameDirs(project, dir, home string) []string {
 
 // Inside reports whether path is dir or inside dir.
 func Inside(path, dir string) bool {
-	rel, err := filepath.Rel(dir, path)
+	rel, err := filepath.Rel(folded(dir), folded(path))
 	if err != nil {
 		return false
 	}
@@ -140,8 +150,30 @@ func Ensure(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fail.New("private", "I could not make the private folder %s: %s", dir, fail.Reason(err))
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	r, err := openBoundary(dir)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	if err := securePath(dir, true); err != nil {
 		return fail.New("private", "I could not lock the private folder %s: %s", dir, fail.Reason(err))
+	}
+	// Older Windows files may have inherited wider ACLs. Tighten every direct
+	// private entry too; a link is refused rather than changing its target.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fail.New("private", "I could not check the private folder permissions.")
+	}
+	for _, e := range entries {
+		if e.Type()&os.ModeSymlink != 0 {
+			return fail.New("private", "The private folder holds a link. Remove the link before trying again.")
+		}
+		if err := securePath(filepath.Join(dir, e.Name()), e.IsDir()); err != nil {
+			if _, checkErr := r.Lstat(e.Name()); errors.Is(checkErr, fs.ErrNotExist) {
+				continue
+			}
+			return fail.New("private-permissions", "I could not limit access to an old private file. I stopped to keep the mapping safe.")
+		}
 	}
 	return nil
 }
@@ -157,41 +189,96 @@ type Out struct {
 	Path string
 	Data []byte
 	Perm os.FileMode
+	// Root pins the privacy boundary for this output (for example restored/).
+	// Every component is checked for links and every operation stays beneath it.
+	Root string
 }
 
-// WriteAll writes every file, or none. Each file goes to a temporary file
-// in the same folder first; only when all are written are they renamed into
-// place. If a rename fails, files already renamed are put back as they were
-// (or removed if they were new).
+// beforePublish is a fault-injection seam used only by package tests.
+var beforePublish func(int)
+
+// WriteAll stages every file before publication and rolls back ordinary
+// rename failures. A rollback failure is reported truthfully. Private-state
+// batches keep previous files and a pending marker until publication finishes;
+// interrupted saves must be recovered by the person. This is not a claim of
+// an all-files atomic commit or power-loss durability.
 func WriteAll(outs []Out) error {
 	type staged struct {
 		out     Out
+		root    *os.Root
+		name    string
 		tmp     string
 		backup  []byte
 		existed bool
 		mode    os.FileMode
 	}
 	var st []staged
+	roots := map[string]*os.Root{}
+	defer func() {
+		for _, r := range roots {
+			r.Close()
+		}
+	}()
 	cleanup := func() {
 		for _, s := range st {
 			if s.tmp != "" {
-				os.Remove(s.tmp)
+				s.root.Remove(s.tmp)
 			}
 		}
 	}
+	// Preflight every path before staging any output. Privacy boundaries must
+	// be real directories; os.Root prevents a later link change from escaping.
 	for _, o := range outs {
-		dir := filepath.Dir(o.Path)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		dirPerm := os.FileMode(0755)
+		if o.Perm.Perm()&0077 == 0 {
+			dirPerm = 0700
+		}
+		dir := o.Root
+		if dir == "" {
+			dir = filepath.Dir(o.Path)
+		}
+		if _, ok := roots[dir]; !ok {
+			if err := os.MkdirAll(dir, dirPerm); err != nil {
+				return fail.New("write", "I could not make an output folder. I wrote no output files.")
+			}
+			r, err := openBoundary(dir)
+			if err != nil {
+				return err
+			}
+			roots[dir] = r
+		}
+		r := roots[dir]
+		name, err := filepath.Rel(dir, o.Path)
+		if err != nil || !filepath.IsLocal(name) {
+			return fail.New("output-boundary", "An output path leaves its safe folder. I wrote no output files.")
+		}
+		if err := noLinks(r, name); err != nil {
+			return err
+		}
+		if info, err := r.Stat(name); err == nil && !info.Mode().IsRegular() {
+			return fail.New("write", "An output file is not a plain file. I wrote no output files.")
+		}
+		st = append(st, staged{out: o, root: r, name: name})
+	}
+	for i := range st {
+		s := &st[i]
+		o := s.out
+		r := s.root
+		dir := filepath.Dir(s.name)
+		dirPerm := os.FileMode(0755)
+		if o.Perm.Perm()&0077 == 0 {
+			dirPerm = 0700
+		}
+		if err := r.MkdirAll(dir, dirPerm); err != nil {
 			cleanup()
 			return fail.New("write", "I could not make a folder for the output (%s). I wrote nothing.", fail.Reason(err))
 		}
-		f, err := os.CreateTemp(dir, ".standin-tmp-*")
+		f, tmp, err := rootTemp(r, dir, o.Perm)
 		if err != nil {
 			cleanup()
 			return fail.New("write", "I could not write an output file (%s). I wrote nothing.", fail.Reason(err))
 		}
-		s := staged{out: o, tmp: f.Name()}
-		st = append(st, s)
+		s.tmp = tmp
 		err = f.Chmod(o.Perm)
 		if err == nil {
 			_, err = f.Write(o.Data)
@@ -206,31 +293,150 @@ func WriteAll(outs []Out) error {
 			cleanup()
 			return fail.New("write", "I could not write an output file (%s). I wrote nothing.", fail.Reason(err))
 		}
-		if old, err := os.ReadFile(o.Path); err == nil {
-			st[len(st)-1].backup, st[len(st)-1].existed = old, true
-			if info, err := os.Stat(o.Path); err == nil {
-				st[len(st)-1].mode = info.Mode().Perm()
+		if old, err := r.ReadFile(s.name); err == nil {
+			s.backup, s.existed = old, true
+			if info, err := r.Stat(s.name); err == nil {
+				s.mode = info.Mode().Perm()
+			}
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			cleanup()
+			return fail.New("write", "I could not save the old output for rollback. I wrote no output files.")
+		}
+	}
+	// Mark private-state publication, and keep previous private files for a
+	// person recovering after interruption. A pending marker is never ignored.
+	var pending *os.Root
+	for _, s := range st {
+		base := filepath.Base(s.name)
+		if base != MappingFile && base != WordsFile && base != ApprovalFile {
+			continue
+		}
+		if pending == nil {
+			pending = s.root
+			if _, err := pending.Lstat(PendingFile); err == nil || !errors.Is(err, fs.ErrNotExist) {
+				cleanup()
+				return fail.New("private-pending", "A previous save did not finish. Ask the person to recover the private folder before trying again.")
+			}
+		}
+		if s.existed {
+			if err := rootAtomic(s.root, ".standin-previous-"+base, s.backup, 0600); err != nil {
+				cleanup()
+				return fail.New("write", "I could not save the previous private file. I wrote no output files.")
 			}
 		}
 	}
+	if pending != nil {
+		if err := rootAtomic(pending, PendingFile, []byte("{\"version\":1,\"note\":\"SECRET. A save is in progress. Do not use the mapping until it finishes. Previous private files are .standin-previous-*.\"}\n"), 0600); err != nil {
+			cleanup()
+			return fail.New("write", "I could not mark the private save safely. I wrote no output files.")
+		}
+		if err := syncRoot(pending); err != nil {
+			cleanup()
+			return fail.New("private-pending", "I could not confirm the unfinished-save mark was saved. I stopped before publishing files. Ask the person to check the private folder.")
+		}
+	}
 	for i := range st {
-		if err := os.Rename(st[i].tmp, st[i].out.Path); err != nil {
+		if beforePublish != nil {
+			beforePublish(i)
+		}
+		if err := st[i].root.Rename(st[i].tmp, st[i].name); err != nil {
 			// Undo the ones already moved.
+			rolledBack := true
 			for j := 0; j < i; j++ {
 				if st[j].existed {
-					_ = os.WriteFile(st[j].out.Path, st[j].backup, st[j].mode)
+					if rootAtomic(st[j].root, st[j].name, st[j].backup, st[j].mode) != nil {
+						rolledBack = false
+					}
 				} else {
-					os.Remove(st[j].out.Path)
+					if st[j].root.Remove(st[j].name) != nil {
+						rolledBack = false
+					}
 				}
 			}
 			for j := i; j < len(st); j++ {
-				os.Remove(st[j].tmp)
+				st[j].root.Remove(st[j].tmp)
+			}
+			if !rolledBack {
+				return fail.New("write-rollback", "I could not finish saving or put back every file. Stop using these outputs. Ask the person to recover the private folder and scrubbed files from a matching backup.")
+			}
+			for _, s := range st {
+				if syncParents(s.root, s.name) != nil {
+					return fail.New("write-rollback", "I put back the old files, but could not confirm they were saved. Stop using the outputs and ask the person to check them.")
+				}
+			}
+			if pending != nil {
+				if err := pending.Remove(PendingFile); err != nil {
+					return fail.New("private-pending", "I put back the old files, but could not clear the unfinished-save mark. Ask the person to check the private folder.")
+				}
+				if syncRoot(pending) != nil {
+					return fail.New("private-pending", "I put back the old files, but could not confirm the private folder was saved. Ask the person to check it.")
+				}
 			}
 			return fail.New("write", "I could not save an output file (%s). I put back what I had changed.", fail.Reason(err))
 		}
 		st[i].tmp = ""
 	}
+	for _, s := range st {
+		if syncParents(s.root, s.name) != nil {
+			return fail.New("write-sync", "The files were written, but I could not confirm the folders were saved. Stop using these outputs and ask the person to check them.")
+		}
+	}
+	if pending != nil {
+		if err := pending.Remove(PendingFile); err != nil {
+			return fail.New("private-pending", "The files were saved, but I could not clear the unfinished-save mark. Stop using them and ask the person to check the private folder.")
+		}
+		if syncRoot(pending) != nil {
+			return fail.New("private-pending", "The files were saved, but I could not confirm the private folder was saved. Ask the person to check it.")
+		}
+	}
 	return nil
+}
+
+func rootTemp(r *os.Root, dir string, perm os.FileMode) (*os.File, string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return nil, "", err
+	}
+	name := filepath.Join(dir, ".standin-tmp-"+hex.EncodeToString(random[:]))
+	f, err := r.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_RDWR, perm)
+	if err == nil && perm.Perm() == 0600 {
+		if e := secureFile(filepath.Join(r.Name(), name), f); e != nil {
+			f.Close()
+			r.Remove(name)
+			return nil, "", e
+		}
+	}
+	return f, name, err
+}
+
+func syncParents(r *os.Root, name string) error {
+	for dir := filepath.Dir(name); ; dir = filepath.Dir(dir) {
+		if err := syncRoot(r, dir); err != nil {
+			return err
+		}
+		if dir == "." {
+			return nil
+		}
+	}
+}
+
+func rootAtomic(r *os.Root, name string, data []byte, perm os.FileMode) error {
+	f, tmp, err := rootTemp(r, filepath.Dir(name), perm)
+	if err != nil {
+		return err
+	}
+	defer r.Remove(tmp)
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if e := f.Close(); err == nil {
+		err = e
+	}
+	if err != nil {
+		return err
+	}
+	return r.Rename(tmp, name)
 }
 
 // Approval is what approve stores.
@@ -249,6 +455,9 @@ type Approval struct {
 
 // LoadApproval reads approval.json. A missing file gives nil, nil.
 func LoadApproval(dir string) (*Approval, error) {
+	if err := CheckReady(dir); err != nil {
+		return nil, err
+	}
 	b, err := os.ReadFile(filepath.Join(dir, ApprovalFile))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -257,10 +466,20 @@ func LoadApproval(dir string) (*Approval, error) {
 		return nil, fail.New("approval-read", "I could not read the approval file (%s).", fail.Reason(err))
 	}
 	var a Approval
-	if err := json.Unmarshal(b, &a); err != nil || a.Version != 1 || a.ConfigSHA256 == "" {
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&a); err != nil || jsonsafe.Validate(b) != nil || a.Version != 1 || !validHash(a.ConfigSHA256) || (a.WordsSHA256 != "" && !validHash(a.WordsSHA256)) {
 		return nil, fail.New("approval-bad", "The approval file is damaged. Run `standin approve` again.")
 	}
 	return &a, nil
+}
+
+func validHash(s string) bool {
+	if len(s) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
 }
 
 // MarshalApproval writes an approval as JSON.
@@ -284,6 +503,11 @@ func RecordError(dir, command, code string) {
 	if dir == "" || !Exists(dir) {
 		return
 	}
+	lease, err := lockFor(dir, 0)
+	if err != nil {
+		return
+	}
+	defer lease.Close()
 	es := LoadErrors(dir)
 	es = append(es, ErrorEntry{Time: time.Now().UTC().Format(time.RFC3339), Command: command, Code: code})
 	if len(es) > keepErrors {
@@ -295,13 +519,42 @@ func RecordError(dir, command, code string) {
 
 // LoadErrors reads the error records, or none.
 func LoadErrors(dir string) []ErrorEntry {
+	if CheckReady(dir) != nil {
+		return nil
+	}
 	b, err := os.ReadFile(filepath.Join(dir, ErrorsFile))
 	if err != nil {
 		return nil
 	}
 	var es []ErrorEntry
-	if json.Unmarshal(b, &es) != nil {
+	if jsonsafe.Validate(b) != nil || json.Unmarshal(b, &es) != nil || len(es) > keepErrors {
 		return nil
 	}
+	for i := range es {
+		stamp, err := time.Parse(time.RFC3339, es[i].Time)
+		if err != nil || !safeErrorCommand[es[i].Command] || !safeErrorCode[es[i].Code] {
+			return nil
+		}
+		es[i].Time = stamp.UTC().Format(time.RFC3339)
+	}
 	return es
+}
+
+// Only built-in labels may leave the private error log through report.
+// A hand-edited log must not turn this data-free report into a secret reader.
+var safeErrorCommand = stringSet("shape review approve scrub restore show check report version licences")
+var safeErrorCode = stringSet(`error active-content approval-bad approval-read bad-answer bad-csv bad-encoding
+bad-json bad-quote config-bad config-read duplicate-header empty hidden-char json-dup json-key json-shape
+left-over lone-cr mapping-bad mapping-missing mapping-read name-is-data no-answer no-config no-mapping
+no-raw no-terminal not-approved not-found not-raw not-text output-boundary private private-busy
+private-inside private-lock private-pending private-permissions project ragged read same-output
+standin-in-input stdout-not-terminal txt-table uncased-script unsupported usage word-lists words-bad
+words-read write write-rollback write-sync`)
+
+func stringSet(s string) map[string]bool {
+	m := map[string]bool{}
+	for _, word := range strings.Fields(s) {
+		m[word] = true
+	}
+	return m
 }

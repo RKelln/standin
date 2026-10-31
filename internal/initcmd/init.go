@@ -14,9 +14,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	failure "github.com/RKelln/standin/internal/fail"
 	"github.com/RKelln/standin/internal/hook"
+	corestore "github.com/RKelln/standin/internal/store"
 )
 
 const (
@@ -34,6 +37,9 @@ type change struct {
 	what string // "made" or "updated"
 	note string // shown after the name
 }
+
+// Replaced in tests to exercise setup failures after folders were created.
+var writeSetup = corestore.WriteAll
 
 // Run is the entry point for `standin init`. args excludes "init".
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -77,6 +83,13 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	proj = filepath.Clean(proj)
 	if st, err := os.Stat(proj); err != nil || !st.IsDir() {
 		return fail("the project folder does not exist: " + proj)
+	}
+	if real, err := filepath.EvalSymlinks(proj); err == nil {
+		proj = real
+	}
+	// Check existing destinations before reading or changing setup files.
+	if err := preflight(proj, nil); err != nil {
+		return fail(err.Error())
 	}
 	store, err := hook.Core.StoreDir(proj, *private)
 	if err != nil {
@@ -145,31 +158,57 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		plan = append(plan, planFixed(proj, filepath.Join("standin-harness", "opencode-UNTESTED.md"), opencodeNote(exe))...)
 	}
 
-	// Apply: folders, then files.
+	if err := preflight(proj, plan); err != nil {
+		return fail(err.Error())
+	}
+	// Apply folders, then publish all setup files as one staged write. If a
+	// normal error occurs, remove only the empty folders this run created.
 	var did []string
+	var created []string
+	applyFail := func(msg string) int {
+		var left []string
+		for i := len(created) - 1; i >= 0; i-- {
+			if err := os.Remove(created[i]); err != nil {
+				rel, _ := filepath.Rel(proj, created[i])
+				left = append(left, filepath.ToSlash(rel))
+			}
+		}
+		fmt.Fprintln(stderr, "standin init: "+msg)
+		if len(left) > 0 {
+			fmt.Fprintln(stderr, "Some new folders remain: "+strings.Join(left, ", ")+".")
+		}
+		fmt.Fprintln(stderr, "Setup did not finish. Check the files above, then run standin init again before using the AI.")
+		return exitBlock
+	}
 	for _, d := range []struct {
 		name string
 		perm os.FileMode
 	}{{hook.RawDir, 0o700}, {hook.ShapeDir, 0o755}, {hook.ScrubbedDir, 0o755}, {hook.RestoredDir, 0o700}} {
 		p := filepath.Join(proj, d.name)
-		if st, err := os.Stat(p); err == nil {
-			if !st.IsDir() {
-				return fail(d.name + " exists but is not a folder.")
-			}
+		if _, err := os.Stat(p); err == nil {
 			continue
 		}
 		if err := os.Mkdir(p, d.perm); err != nil {
-			return fail("cannot make " + d.name + "/: " + err.Error())
+			return applyFail("cannot make " + d.name + "/: " + corestoreReason(err))
 		}
+		created = append(created, p)
 		did = append(did, "made "+d.name+"/")
 	}
+	var outs []corestore.Out
 	for _, c := range plan {
-		if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
-			return fail("cannot make the folder for " + c.rel + ": " + err.Error())
+		if err := makeParents(proj, filepath.Dir(c.path), &created); err != nil {
+			return applyFail("cannot make the folder for " + c.rel + ": " + corestoreReason(err))
 		}
-		if err := atomicWrite(c.path, c.data, c.perm); err != nil {
-			return fail("cannot write " + c.rel + ": " + err.Error())
+		perm := c.perm
+		if st, err := os.Stat(c.path); err == nil {
+			perm = st.Mode().Perm()
 		}
+		outs = append(outs, corestore.Out{Path: c.path, Root: proj, Data: c.data, Perm: perm})
+	}
+	if err := writeSetup(outs); err != nil {
+		return applyFail(err.Error())
+	}
+	for _, c := range plan {
 		did = append(did, c.what+" "+filepath.ToSlash(c.rel)+c.note)
 	}
 
@@ -199,9 +238,10 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, "Be aware: the shell check is only a guess from the command text. A script or a clever command")
 		fmt.Fprintln(stdout, "  can still read raw/. The hooks are a safety net, not a wall.")
-		fmt.Fprintln(stdout, "We recommend turning on Claude Code's sandbox, which blocks every program from raw/ and restored/:")
+		fmt.Fprintln(stdout, "We recommend turning on Claude Code's shell sandbox. With these deny rules, it blocks shell commands from raw/ and restored/:")
 		fmt.Fprintln(stdout, `  add "sandbox": {"enabled": true, "allowUnsandboxedCommands": false} to .claude/settings.local.json.`)
 		fmt.Fprintln(stdout, "  It works on macOS, Linux (needs bubblewrap and socat) and WSL2, not on plain Windows.")
+		fmt.Fprintln(stdout, "  Check /sandbox to make sure it started. File tools, MCP servers and hooks run outside the shell sandbox.")
 	}
 	if harnesses["codex"] || harnesses["opencode"] {
 		fmt.Fprintln(stdout, "Codex and OpenCode notes are in standin-harness/. They are untested; read them before you use them.")
@@ -229,40 +269,83 @@ func planFixed(proj, rel, content string) []change {
 	return []change{{rel: rel, path: p, data: []byte(content), perm: 0o644, what: what}}
 }
 
-// atomicWrite writes to a temp file in the same folder, then renames it.
-func atomicWrite(path string, data []byte, perm os.FileMode) error {
-	if st, err := os.Stat(path); err == nil {
-		perm = st.Mode().Perm()
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".standin-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	ok := false
-	defer func() {
-		if !ok {
-			os.Remove(tmp)
+func corestoreReason(err error) string { return failure.Reason(err) }
+
+// preflight refuses ambiguous or blocked destinations before setup changes
+// anything. Checking every component also keeps existing setup symlinks from
+// leading reads and writes to another folder.
+func preflight(proj string, plan []change) error {
+	dirs := map[string]bool{"raw": true, "shape": true, "scrubbed": true, "restored": true, ".claude": true, "standin-harness": true}
+	files := map[string]bool{"AGENTS.md": true, hook.ConfigName: true,
+		filepath.Join(".claude", "settings.json"): true, filepath.Join(".claude", "settings.local.json"): true}
+	for _, c := range plan {
+		rel, err := filepath.Rel(proj, c.path)
+		if err != nil || !within(c.path, proj) {
+			return errors.New("a setup path is outside the project folder")
 		}
-	}()
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
+		files[rel] = true
 	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
+	var paths []string
+	for p := range dirs {
+		paths = append(paths, p)
 	}
-	if err := f.Close(); err != nil {
-		return err
+	for p := range files {
+		paths = append(paths, p)
 	}
-	if err := os.Chmod(tmp, perm); err != nil {
-		return err
+	sort.Strings(paths)
+	for _, rel := range paths {
+		parts := strings.Split(rel, string(filepath.Separator))
+		cur := proj
+		for i, part := range parts {
+			cur = filepath.Join(cur, part)
+			st, err := os.Lstat(cur)
+			if errors.Is(err, os.ErrNotExist) {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("cannot check %s: %s", filepath.ToSlash(rel), failure.Reason(err))
+			}
+			if st.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("%s uses a link to another path. Replace it with a plain file or folder before setup", filepath.ToSlash(rel))
+			}
+			wantDir := i < len(parts)-1 || dirs[rel]
+			if wantDir && !st.IsDir() {
+				return fmt.Errorf("%s exists but is not a folder", filepath.ToSlash(rel))
+			}
+			if !wantDir && !st.Mode().IsRegular() {
+				return fmt.Errorf("%s exists but is not a plain file", filepath.ToSlash(rel))
+			}
+		}
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		return err
+	return nil
+}
+
+func makeParents(proj, dir string, created *[]string) error {
+	rel, err := filepath.Rel(proj, dir)
+	if err != nil || !within(dir, proj) {
+		return errors.New("setup folder is outside the project")
 	}
-	ok = true
+	cur := proj
+	if rel == "." {
+		return nil
+	}
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		st, err := os.Lstat(cur)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir(cur, 0755); err != nil {
+				return err
+			}
+			*created = append(*created, cur)
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+			return errors.New("setup path is not a plain folder")
+		}
+	}
 	return nil
 }
 

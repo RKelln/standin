@@ -4,7 +4,7 @@
 // folder, with STANDIN_HOME and HOME pointed at temp dirs. They use only the
 // invented fixtures in testdata/ (made by tools/make_fixtures.py).
 //
-// If ./cmd/standin does not build yet, every test skips with the reason.
+// If the binary cannot be built, the suite fails rather than silently skipping.
 package e2e
 
 import (
@@ -24,27 +24,26 @@ import (
 )
 
 var (
-	repoRoot   string
-	binPath    string
-	skipReason string
+	repoRoot string
+	binPath  string
 )
 
 func TestMain(m *testing.M) {
 	code := func() int {
 		wd, err := os.Getwd()
 		if err != nil {
-			skipReason = "cannot find working dir: " + err.Error()
-			return m.Run()
+			fmt.Fprintln(os.Stderr, "e2e: cannot find working dir:", err)
+			return 1
 		}
 		repoRoot = filepath.Dir(wd)
 		if _, err := os.Stat(filepath.Join(repoRoot, "cmd", "standin")); err != nil {
-			skipReason = "cmd/standin does not exist yet"
-			return m.Run()
+			fmt.Fprintln(os.Stderr, "e2e: cmd/standin does not exist")
+			return 1
 		}
 		dir, err := os.MkdirTemp("", "standin-e2e-bin-")
 		if err != nil {
-			skipReason = "cannot make temp dir: " + err.Error()
-			return m.Run()
+			fmt.Fprintln(os.Stderr, "e2e: cannot make temp dir:", err)
+			return 1
 		}
 		defer os.RemoveAll(dir)
 		name := "standin"
@@ -55,8 +54,8 @@ func TestMain(m *testing.M) {
 		cmd := exec.Command("go", "build", "-o", binPath, "./cmd/standin")
 		cmd.Dir = repoRoot
 		if out, err := cmd.CombinedOutput(); err != nil {
-			skipReason = fmt.Sprintf("cmd/standin does not build yet: %v\n%s", err, out)
-			binPath = ""
+			fmt.Fprintf(os.Stderr, "e2e: cannot build standin: %v\n%s", err, out)
+			return 1
 		}
 		return m.Run()
 	}()
@@ -66,7 +65,7 @@ func TestMain(m *testing.M) {
 func needBinary(t *testing.T) {
 	t.Helper()
 	if binPath == "" {
-		t.Skip(skipReason)
+		t.Fatal("standin test binary is missing")
 	}
 }
 
@@ -109,6 +108,9 @@ func newProject(t *testing.T) *project {
 	t.Helper()
 	needBinary(t)
 	base := t.TempDir()
+	if real, err := filepath.EvalSymlinks(base); err == nil {
+		base = real
+	}
 	p := &project{t: t, dir: filepath.Join(base, "shop"), home: filepath.Join(base, "standin-home"),
 		userHom: filepath.Join(base, "home")}
 	for _, d := range []string{p.dir, filepath.Join(p.dir, "raw"), p.userHom} {
@@ -320,7 +322,13 @@ func (p *project) noLeaksInDirs(values []string, dirs ...string) {
 // noLeaksInOutput checks the stdout and stderr of every command run so far (not restore).
 func (p *project) noLeaksInOutput(values []string) {
 	p.t.Helper()
-	noLeaks(p.t, "stdout/stderr of standin commands", strings.Join(p.outputs, "\n"), values)
+	// Random test-directory digits or the path hash can coincidentally contain
+	// a short fixture amount. Exclude these exact generated metadata paths,
+	// while continuing to check every filename, message and data value.
+	out := strings.Join(p.outputs, "\n")
+	out = strings.ReplaceAll(out, p.privateDir(), "(test private directory)")
+	out = strings.ReplaceAll(out, filepath.Dir(p.dir), "(test directory)")
+	noLeaks(p.t, "stdout/stderr of standin commands", out, values)
 }
 
 // ---- CSV ------------------------------------------------------------------
