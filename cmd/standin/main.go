@@ -19,6 +19,7 @@ func main() {
 		Stderr:           os.Stderr,
 		StdinIsTerminal:  cli.StdinIsTerminal,
 		StdoutIsTerminal: cli.StdoutIsTerminal,
+		StderrIsTerminal: cli.StderrIsTerminal,
 		Getenv:           os.Getenv,
 		Version:          version,
 		Commit:           commit,

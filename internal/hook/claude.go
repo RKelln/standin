@@ -259,7 +259,7 @@ func (c *claude) shellRisk(cmd string) string {
 	if strings.Contains(low, ".standin") || strings.Contains(low, "standin_home") {
 		return "This command seems to use the private store, where the secret list of real values lives."
 	}
-	for _, f := range forms(c.g.Store) {
+	for _, f := range append(forms(c.g.Store), forms(c.g.home())...) {
 		if f != "" && strings.Contains(norm(cmd), norm(f)) {
 			return "This command uses the private store, where the secret list of real values lives."
 		}

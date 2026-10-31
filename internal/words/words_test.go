@@ -82,6 +82,17 @@ func TestFinderRules(t *testing.T) {
 		{"Will you open on Sunday?", "Will", 0, ""},
 		{"Hi there, Hi team, Thanks all", "there", 0, ""},
 		{"The note says 王伟 called.", "王伟", Uncased, GroupUnusual},
+		// Review fixes (decisions 47-49).
+		{"author: zelda quorn", "quorn", NextToName, GroupNameLike},
+		{"Ask (Grace) about it.", "Grace", FirstName, GroupNameLike},
+		{"Then **Grace** came by.", "Grace", FirstName, GroupNameLike},
+		{"Notes: Grace has the keys.", "Grace", FirstName, GroupNameLike},
+		{"**Grace** came by.", "Grace", 0, ""}, // a sentence start, past the marks
+		{"Rose Fairweather called.", "Rose", NextToName, GroupNameLike},
+		{"April Okonkwo called.", "April", NextToName | Calendar, GroupNameLike},
+		{"Meet June Fairbanks-Ndlovu at noon.", "June", NextToName | Calendar, GroupNameLike},
+		{"Ana Okonkwo June", "June", NextToName | Calendar, GroupNameLike},
+		{"Open on Monday at noon.", "Monday", Calendar, GroupCalendar},
 	}
 	for _, c := range cases {
 		f := find(c.text)
@@ -131,8 +142,63 @@ func TestReplace(t *testing.T) {
 		{"**Rose** - [Shimano](https://example.com)", "**[NAME_2]** - [[NAME_3]](https://example.com)"},
 	}
 	for _, c := range cases {
-		if got := Replace(c.in, known, m, swap); got != c.want {
+		if got := Replace(c.in, known, m, swap, false); got != c.want {
 			t.Errorf("Replace(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// Parts of a word joined by - . or _ are swapped when on the list.
+func TestReplaceJoinedWords(t *testing.T) {
+	m := mapping.New()
+	swap := func(k string) bool { return k == "oksana" || k == "kavya" || k == "ramaswamy" }
+	cases := []struct{ in, want string }{
+		{"see /people/oksana-vantreeck", "see /people/[NAME_1]-vantreeck"},
+		{"mail kavya.ramaswamy@ or kavya_ramaswamy", "mail [NAME_2].[NAME_3]@ or [NAME_2]_[NAME_3]"},
+		{"a well-known shop", "a well-known shop"},
+	}
+	for _, c := range cases {
+		if got := Replace(c.in, nil, m, swap, false); got != c.want {
+			t.Errorf("Replace(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// A one-word NAME value from the mapping is swapped wherever it is, also in
+// lower case inside a link, unless it is a day name the rule keeps.
+func TestHitsKnownOneWordNames(t *testing.T) {
+	m := mapping.New()
+	m.Get(Category, "Ignatius")
+	m.Get(Category, "Monday")
+	known := scan.NewKnown(m)
+	no := func(string) bool { return false }
+	if got := Replace("see https://crm.example/ignatius", known, m, no, false); got != "see https://crm.example/[NAME_1]" {
+		t.Errorf("got %q", got)
+	}
+	if got := Replace("Open Monday", known, m, no, true); got != "Open Monday" {
+		t.Errorf("a kept day name was swapped: %q", got)
+	}
+	if got := Replace("Open Monday", known, m, no, false); got != "Open [NAME_2]" {
+		t.Errorf("got %q", got)
+	}
+	f := NewFinder(known)
+	f.AddLines([]string{"see https://crm.example/ignatius"})
+	if c := f.Get("ignatius"); c == nil || c.Reasons&KnownName == 0 {
+		t.Error("a known one-word name should stay a candidate, so approve can ask about it")
+	}
+}
+
+// A one-word name in a header is caught; common headers are not.
+func TestHeaderNamed(t *testing.T) {
+	for _, h := range []string{"Oksana", "Kavya", "kavya", "Day Oksana", "Shopify"} {
+		if !headerNamed(h) {
+			t.Errorf("%q should look like a name", h)
+		}
+	}
+	for _, h := range []string{"Day", "Amount", "Customer Email", "SKU", "Created (UTC)", "Montant", "Courriel",
+		"items[].name", "address.city", "customerId", "Mon", "Lundi", "Clr", "Grace"} {
+		if headerNamed(h) {
+			t.Errorf("%q should not look like a name", h)
 		}
 	}
 }

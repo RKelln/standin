@@ -104,7 +104,13 @@ func TestMovedProjectHint(t *testing.T) {
 	}
 	moved := at(newDir)
 	moved.write("out/reply.md", "Hi [VALUE_1]\n")
+	// Off a terminal (an agent reading a pipe), the hint names no private path.
 	r := moved.run("", false, "restore", "out/reply.md")
+	if r.code != 2 || strings.Contains(r.stderr, oldPriv) || strings.Contains(r.stderr, "from:") ||
+		!strings.Contains(r.stderr, "standin review") {
+		t.Fatalf("off a terminal the hint must not name the old folder: %+v", r)
+	}
+	r = moved.run("", true, "restore", "out/reply.md")
 	if r.code != 2 {
 		t.Fatalf("restore with no mapping should stop: %+v", r)
 	}

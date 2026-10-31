@@ -17,14 +17,14 @@ Read `AGENTS.md`, `docs/PLAN.md` (the contract), `docs/DESIGN.md`.
 - Shapes are setup-only; day to day the agent sees scrubbed files only. Harness deny-configs are
   "not foolproof but help": ship them for Claude Code, Codex, OpenCode.
 
-## Status (2026-10-30 night)
+## Status (2026-10-31)
 
 - v0.1.0 released 2026-10-30: https://github.com/RKelln/standin/releases/tag/v0.1.0 (local goreleaser).
-  The curl install was tested on Linux against the live release.
-- All tracks landed. Fresh review: 16 findings, fixed per DESIGN 24-31; reviewer repros rerun clean
-  (except `--private` by hand, which is allowed for the person; the hook blocks it for agents).
-- `go test ./...` green. `sh tools/claude_smoke.sh`: 4/4 on Claude Code 2.1.314 (Linux).
-- Success check 3 passed (DESIGN 23).
+- On main since then (not released): fixes from a trial run (DESIGN 32-37), free text `.md`/`.txt` with
+  word approval (38-45), and a second fresh review's fixes (46-52). `go test ./...` green;
+  `sh tools/claude_smoke.sh` 8/8 on Claude Code 2.1.314 (Linux); reviewer repros rerun clean.
+- Untested: real inboxes, a real person on the word pages, macOS/Windows, review-word counts after the
+  46-52 rules (expect a few more words).
 
 ## For Ryan
 

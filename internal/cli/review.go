@@ -404,13 +404,23 @@ func parsePicks(line string, n int) ([]int, bool) {
 }
 
 // StdinIsTerminal reports whether stdin is a terminal (a person typing).
-func StdinIsTerminal() bool {
-	st, err := os.Stdin.Stat()
-	return err == nil && st.Mode()&os.ModeCharDevice != 0
-}
+func StdinIsTerminal() bool { return isTerminal(os.Stdin) }
 
 // StdoutIsTerminal reports whether stdout is a terminal (a screen, not a pipe or file).
-func StdoutIsTerminal() bool {
-	st, err := os.Stdout.Stat()
-	return err == nil && st.Mode()&os.ModeCharDevice != 0
+func StdoutIsTerminal() bool { return isTerminal(os.Stdout) }
+
+// StderrIsTerminal reports whether stderr is a terminal.
+func StderrIsTerminal() bool { return isTerminal(os.Stderr) }
+
+// isTerminal: a character device that is not the null device (/dev/null is a
+// character device too, so a program could pass it off as a screen).
+func isTerminal(f *os.File) bool {
+	st, err := f.Stat()
+	if err != nil || st.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(st, null) {
+		return false
+	}
+	return true
 }

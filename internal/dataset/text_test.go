@@ -93,3 +93,36 @@ func TestTxtThatIsATable(t *testing.T) {
 		t.Error("a receipt is not a table")
 	}
 }
+
+// Hidden characters and character codes inside a word can split a name, so
+// they are refused with the line number (decision 51).
+func TestHiddenCharactersRefused(t *testing.T) {
+	cases := []struct {
+		kind, text string
+		line       string
+	}{
+		{Text, "Hi there.\nAsk Zel\u200bda Quorn.\n", "Line 2"},
+		{Text, "Ask Quo&#114;n today.\n", "Line 1"},
+		{Text, "Ask &#90;elda today.\n", "Line 1"},
+		{CSV, "Name,Notes\nZelda,Quo\u00adrn\n", "Line 2"},
+		{CSV, "Name\nZelda\ufeffQuorn\n", "Line 2"},
+		{TSV, "Name\tNotes\nZelda\tQ\u2060uorn\n", "Line 2"},
+		{JSON, `[{"name":"Zel\u200cda"}]`, "Record 1"},
+	}
+	for _, c := range cases {
+		_, err := Parse(c.kind, []byte(c.text))
+		if err == nil || fail.Code(err) != "hidden-char" || !strings.Contains(err.Error(), c.line) {
+			t.Errorf("%s %q: got %v", c.kind, c.text, err)
+		}
+	}
+	// A byte order mark at the start, a plain & and an emoji joiner are fine.
+	for _, c := range []struct{ kind, text string }{
+		{CSV, "\ufeffName\nZelda\n"},
+		{Text, "Fish & chips &amp; more.\n"},
+		{Text, "Family: \U0001F469\u200d\U0001F467 ok\n"},
+	} {
+		if _, err := Parse(c.kind, []byte(c.text)); err != nil {
+			t.Errorf("%q: %v", c.text, err)
+		}
+	}
+}

@@ -23,10 +23,11 @@ const (
 	Calendar                      // a day or month name
 	FieldPart                     // a capitalised word from a tokenized "Label: value" line
 	Uncased                       // a word in a script with no capital letters (Chinese, Arabic ...)
+	KnownName                     // a one-word NAME value from the mapping (swapped before)
 )
 
 // nameLike are the reasons that put a word in the name-like group.
-const nameLike = NameSpot | SignOff | FirstName | NextToName | FieldPart
+const nameLike = NameSpot | SignOff | FirstName | NextToName | FieldPart | KnownName
 
 // Groups of candidates. Only GroupCalendar may be kept by the config.
 const (
@@ -120,15 +121,23 @@ func (f *Finder) AddFieldParts(value string) {
 	}
 }
 
-// Hits returns the known values and patterns in a line that the word pass
-// leaves to the known-values and pattern pass. A single-word NAME value from
-// an earlier scrub is not one of them: it goes through the word rules again,
-// so a word the person kept, or a day name kept by the config, is not
-// swapped just because it was swapped before.
-func Hits(line string, known *scan.Known) []scan.Hit {
+// oneWordName: a hit on a one-word NAME row (a word swapped by an earlier
+// word check).
+func oneWordName(line string, h scan.Hit) bool {
+	return h.Category == Category && h.Standin != "" && !strings.ContainsAny(line[h.Start:h.End], " \t\u00a0")
+}
+
+// Hits returns the known values and patterns in a line, which are swapped
+// whole. A one-word NAME value is left out only when it is a day or month
+// name and keepCal is set (the rule keeps the calendar group): such a word
+// was swapped in another file, but this file keeps it. A word the person
+// kept is not a known value at all (scan.NewKnown leaves it out), nor is one
+// that is also an English word (scan.SkipKnown). Every other known value is
+// swapped in any case and any spot, also inside a link (decision 47).
+func Hits(line string, known *scan.Known, keepCal bool) []scan.Hit {
 	var out []scan.Hit
 	for _, h := range scan.FindAll(line, known) {
-		if h.Category == "NAME" && h.Standin != "" && !strings.ContainsAny(line[h.Start:h.End], " \t ") {
+		if keepCal && oneWordName(line, h) && calendar[Key(line[h.Start:h.End])] {
 			continue
 		}
 		out = append(out, h)
@@ -171,11 +180,39 @@ func (f *Finder) AddLines(lines []string) {
 	}
 }
 
+// sentenceEnd reports whether the text before a word ends a sentence (or
+// is the start of the line), so a capitalised word there may just start a
+// sentence. Marks that wrap a word (* _ ( [ and quotes) are looked past. A
+// colon is not a sentence end ("Notes: Grace has ..."), nor a comma.
+func sentenceEnd(before string, lead, a int) bool {
+	if a <= lead {
+		return true
+	}
+	tb := strings.TrimRight(before, " \t*_([\"'“‘«")
+	if strings.TrimSpace(tb) == "" || len(tb) <= lead {
+		return true
+	}
+	return strings.HasSuffix(tb, ".") || strings.HasSuffix(tb, "!") || strings.HasSuffix(tb, "?") ||
+		strings.HasSuffix(tb, "|") || strings.HasSuffix(tb, "—") || strings.HasSuffix(tb, "--")
+}
+
 func (f *Finder) addLine(line, prevLine string) {
 	if strings.TrimSpace(line) == "" {
 		return
 	}
-	hits := Hits(line, f.known)
+	// The rules look at a one-word NAME value again (so a day name a rule
+	// keeps is not caught just for being swapped elsewhere); it is still a
+	// candidate, so it is swapped and approve can ask about it.
+	var hits, named []scan.Hit
+	for _, h := range scan.FindAll(line, f.known) {
+		if oneWordName(line, h) {
+			if !calendar[Key(line[h.Start:h.End])] {
+				named = append(named, h)
+			}
+			continue
+		}
+		hits = append(hits, h)
+	}
 	lead := mdLead.FindStringIndex(line)[1]
 	toks := Tokens(line)
 	// A sign-off line: 1 to 3 words and nothing else, after a closing line or after "--".
@@ -193,6 +230,8 @@ func (f *Finder) addLine(line, prevLine string) {
 		(closing.MatchString(prevLine) || dashSign.MatchString(line))
 
 	counted := map[int]bool{}
+	hitAt := make([]bool, len(toks)) // the word was caught as a name (not just a day name)
+	calAt := make([]bool, len(toks)) // the word is a day or month name candidate
 	hitPrev := false
 	for i, t := range toks {
 		a, b := t[0], t[1]
@@ -208,11 +247,7 @@ func (f *Finder) addLine(line, prevLine string) {
 		lw := strings.ToLower(w)
 		k := Key(w)
 		before := line[:a]
-		tb := strings.TrimRight(before, " \t")
-		initial := a <= lead || strings.TrimSpace(before) == "" ||
-			strings.HasSuffix(tb, ".") || strings.HasSuffix(tb, "!") || strings.HasSuffix(tb, "?") ||
-			strings.HasSuffix(tb, ":") || strings.HasSuffix(tb, "\"") || strings.HasSuffix(tb, "“") ||
-			strings.HasSuffix(tb, "(") || strings.HasSuffix(tb, "*") || strings.HasSuffix(tb, "|")
+		initial := sentenceEnd(before, lead, a)
 		cpt := IsCapitalised(w)
 		prevw, between := "", ""
 		if i > 0 {
@@ -223,7 +258,12 @@ func (f *Finder) addLine(line, prevLine string) {
 		if IsUncased(w) {
 			f.add(w, Uncased, line, a, b, counted)
 			hitPrev = true
+			hitAt[i] = true
 			continue
+		}
+		if covered(named, a, b) {
+			f.add(w, KnownName, line, a, b, counted)
+			hit = true
 		}
 		if cpt && !noise[lw] && !(calendar[k] && (prevw == "from" || prevw == "by" || prevw == "with" || prevw == "per")) {
 			spot := (greet[prevw] && (between == "" || between == ",")) ||
@@ -238,6 +278,7 @@ func (f *Finder) addLine(line, prevLine string) {
 			f.add(w, SignOff, line, a, b, counted)
 			hit = true
 		}
+		nextTo := hitPrev && between == ""
 		switch {
 		case cpt && f.parts[k]:
 			f.add(w, FieldPart, line, a, b, counted)
@@ -245,6 +286,12 @@ func (f *Finder) addLine(line, prevLine string) {
 		case cpt && !InDict(w):
 			if calendar[k] {
 				f.add(w, Calendar, line, a, b, counted)
+				calAt[i] = true
+				if nextTo {
+					// A day or month name next to a name is part of it: Ana June.
+					f.add(w, NextToName, line, a, b, counted)
+					hit = true
+				}
 			} else {
 				f.add(w, NotInDict, line, a, b, counted)
 				hit = true
@@ -258,12 +305,36 @@ func (f *Finder) addLine(line, prevLine string) {
 			// not also an English word, so "grace period" is left alone.
 			f.add(w, FirstName, line, a, b, counted)
 			hit = true
-		case cpt && hitPrev && !initial && strings.TrimSpace(line[toks[i-1][1]:a]) == "":
+		case cpt && nextTo && !initial:
 			// A surname that is also a word: Grace Lee, Ana Brown.
+			f.add(w, NextToName, line, a, b, counted)
+			hit = true
+		case !cpt && nextTo && !InDict(w) && !calendar[k]:
+			// A surname typed in lower case: zelda quorn.
 			f.add(w, NextToName, line, a, b, counted)
 			hit = true
 		}
 		hitPrev = hit
+		hitAt[i] = hit
+	}
+	// Looking back: a capitalised first name, or a day or month name, right
+	// before a caught name is part of it (Rose Fairweather, April Okonkwo),
+	// even at the start of a sentence.
+	for i := len(toks) - 1; i > 0; i-- {
+		if !hitAt[i] {
+			continue
+		}
+		p := toks[i-1]
+		w := line[p[0]:p[1]]
+		k := Key(w)
+		if hitAt[i-1] || strings.TrimSpace(line[p[1]:toks[i][0]]) != "" || covered(hits, p[0], p[1]) ||
+			!IsCapitalised(w) || utf8.RuneCountInString(w) < 2 || noise[k] || greet[k] || titles[k] {
+			continue
+		}
+		if first[k] || calAt[i-1] {
+			f.add(w, NextToName, line, p[0], p[1], counted)
+			hitAt[i-1] = true
+		}
 	}
 }
 
@@ -294,7 +365,7 @@ const Mask = "▒▒▒"
 // real text: show it to the person on a terminal only.
 func (f *Finder) Context(c *Cand) string {
 	line := c.line
-	hits := Hits(line, f.known)
+	hits := scan.FindAll(line, f.known)
 	type span struct {
 		a, b   int
 		target bool

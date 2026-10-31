@@ -237,6 +237,9 @@ func insideStandin(s string, a, b int) bool {
 
 var standinRe = regexp.MustCompile(`\[[A-Z]+_[1-9][0-9]*\]`)
 
+// InsideStandin reports whether s[a:b] overlaps a stand-in already in s.
+func InsideStandin(s string, a, b int) bool { return insideStandin(s, a, b) }
+
 // HasStandin reports whether s already holds stand-in-shaped text.
 func HasStandin(s string) bool { return standinRe.MatchString(s) }
 

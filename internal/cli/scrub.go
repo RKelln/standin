@@ -32,6 +32,15 @@ type scrubFile struct {
 	plans []plan
 	text  string // text files: config.Words or config.Drop, for the free text
 	out   []byte
+	// checked are the scanned cells and word-checked lines of the output,
+	// looked at once more for known values before anything is written.
+	checked []checkedPart
+}
+
+// checkedPart is one scanned cell or word-checked line of an output.
+type checkedPart struct {
+	where string // "line 4" or "column Notes"
+	text  string
 }
 
 // wordPass reports whether any part of the file gets the word check.
@@ -351,55 +360,93 @@ func runScrub(c *ctx) error {
 	if err != nil {
 		return err
 	}
-	// Pass 2: scans and the word check, then build each output.
+	// Pass 2: scans and the word check, then build each output. Words the
+	// check swaps join the mapping as it goes, so a scan in a file built
+	// before them would miss them: if the mapping grew, build every output
+	// again with the bigger known list (stand-ins stay the same).
 	known := r.known
 	swappedWords := map[string]bool{}
-	for _, sf := range r.sfs {
-		plans, d := sf.plans, sf.d
-		var swap func(string) bool
-		if sf.wordPass() {
-			inner := r.swapper(sf)
-			swap = func(k string) bool {
-				ok := inner(k)
-				if ok {
-					swappedWords[k] = true
+	for round := 0; round < 2; round++ {
+		if round == 1 {
+			m.SetKept(func(key string) bool { return ch.Keep[words.Key(key)] })
+			known = scan.NewKnown(m)
+		}
+		size := len(m.Entries)
+		for _, sf := range r.sfs {
+			sf.checked = nil
+			plans, d := sf.plans, sf.d
+			infos := shape.Columns(d)
+			keepCal := sf.rule.KeepsGroup(words.GroupCalendar)
+			var swap func(string) bool
+			if sf.wordPass() {
+				inner := r.swapper(sf)
+				swap = func(k string) bool {
+					ok := inner(k)
+					if ok {
+						swappedWords[k] = true
+					}
+					return ok
 				}
-				return ok
+			}
+			out, err := d.Write(dataset.Rewriter{
+				Cell: func(col int, v string) (string, bool) {
+					if strings.TrimSpace(v) == "" {
+						return v, false
+					}
+					switch plans[col].action {
+					case config.Keep:
+						return v, false
+					case config.Drop:
+						return "", true
+					case config.Scan:
+						var nv string
+						if d.Kind == dataset.Text && d.Source[col] == dataset.FromField {
+							nv = words.Replace(v, known, m, swap, keepCal)
+						} else {
+							nv, _ = scan.Replace(v, known, m)
+						}
+						what := "column " + infos[col].Label
+						if d.Kind == dataset.Text {
+							what = "field " + infos[col].Label
+						}
+						sf.checked = append(sf.checked, checkedPart{what, nv})
+						return nv, nv != v
+					}
+					return m.Get(plans[col].category, v), true
+				},
+				Name: func(name string) string { return headerStandin(m, name) },
+				Text: func(i int, s string) string {
+					if sf.text != config.Words {
+						return "" // dropped
+					}
+					out := words.Replace(s, known, m, swap, keepCal)
+					sf.checked = append(sf.checked, checkedPart{fmt.Sprintf("line %d", i+1), out})
+					return out
+				},
+			})
+			if err != nil {
+				return fail.New(fail.Code(err), "%s: %s", show(sf.f.rel), err.Error())
+			}
+			sf.out = out
+		}
+		if len(m.Entries) == size {
+			break
+		}
+	}
+
+	// Last check before anything is written: no value the mapping knows may
+	// be left in a scanned cell or a word-checked line (decision 47). The
+	// same finder as check, so kept words and common words are not looked
+	// for. Kept columns are not checked: the person approved those values.
+	chk := scan.NewKnown(m)
+	for _, sf := range r.sfs {
+		keepCal := sf.rule.KeepsGroup(words.GroupCalendar)
+		for _, part := range sf.checked {
+			if st, ok := leftOver(part.text, chk, keepCal); ok {
+				return fail.New("left-over", "%s, %s: the scrubbed copy would still hold a real value Standin knows (its stand-in is %s). So I stopped, and wrote nothing. "+
+					"In the config, tokenize or drop that part, then try again. Please also tell us with `standin report`: this is a gap in Standin.", show(sf.f.rel), part.where, st)
 			}
 		}
-		out, err := d.Write(dataset.Rewriter{
-			Cell: func(col int, v string) (string, bool) {
-				if strings.TrimSpace(v) == "" {
-					return v, false
-				}
-				switch plans[col].action {
-				case config.Keep:
-					return v, false
-				case config.Drop:
-					return "", true
-				case config.Scan:
-					var nv string
-					if d.Kind == dataset.Text && d.Source[col] == dataset.FromField {
-						nv = words.Replace(v, known, m, swap)
-					} else {
-						nv, _ = scan.Replace(v, known, m)
-					}
-					return nv, nv != v
-				}
-				return m.Get(plans[col].category, v), true
-			},
-			Name: func(name string) string { return headerStandin(m, name) },
-			Text: func(_ int, s string) string {
-				if sf.text != config.Words {
-					return "" // dropped
-				}
-				return words.Replace(s, known, m, swap)
-			},
-		})
-		if err != nil {
-			return fail.New(fail.Code(err), "%s: %s", show(sf.f.rel), err.Error())
-		}
-		sf.out = out
 	}
 
 	// Write the mapping and every scrubbed file, or nothing.
@@ -457,11 +504,28 @@ func runScrub(c *ctx) error {
 	return nil
 }
 
+// leftOver finds a known value in scrubbed text, outside the stand-ins,
+// and gives its stand-in. A one-word NAME that is a day or month name is not
+// looked for when the rule keeps the calendar group.
+func leftOver(text string, known *scan.Known, keepCal bool) (string, bool) {
+	for _, h := range known.Find(text) {
+		v := text[h.Start:h.End]
+		if scan.InsideStandin(text, h.Start, h.End) {
+			continue
+		}
+		if keepCal && h.Category == words.Category && !strings.ContainsAny(v, " \t\u00a0") && words.IsCalendar(v) {
+			continue
+		}
+		return h.Standin, true
+	}
+	return "", false
+}
+
 // headerStandin swaps a header or JSON key for a stand-in when it looks like
 // data (the same check as the shape file), or when it equals a value
 // already in the mapping.
 func headerStandin(m *mapping.Mapping, name string) string {
-	if kind, ok := scan.LooksLikeDataName(name); ok {
+	if kind, ok := scan.LooksLikeDataHeader(name); ok {
 		return m.Get(scan.CategoryForKind(kind), name)
 	}
 	if utf8.RuneCountInString(mapping.Normalize(name)) >= scan.MinKnownLen {
@@ -471,6 +535,10 @@ func headerStandin(m *mapping.Mapping, name string) string {
 	}
 	return name
 }
+
+// dataLikeHeader: the header was hidden because it looks like data (not
+// because it is blank).
+func dataLikeHeader(ci shape.ColumnInfo) bool { return ci.HeaderFlag != "" && ci.HeaderFlag != "empty" }
 
 // planColumns decides what to do with each column of a file.
 // The config must already be approved (runScrub refuses otherwise).
@@ -500,6 +568,9 @@ func (c *ctx) planColumns(cfg *config.Config, sf *scrubFile) error {
 				return err
 			}
 			if found {
+				if _, ok := rule.Columns[name]; ok && dataLikeHeader(infos[i]) {
+					return fail.New("config-bad", "%s: the config names column %d by its header, but that header looks like private data (a name, email or number). Call it %s in the config instead; it can only be tokenize or drop. Fix it, then try again.", config.FileName, i+1, infos[i].Label)
+				}
 				if _, ok := rule.Columns[name]; ok {
 					matched[name] = true
 				} else {
@@ -549,6 +620,9 @@ func (c *ctx) planText(rule *config.File, sf *scrubFile) error {
 				col, found = rule.Fields[name]
 			} else {
 				col, found = rule.Tables[name]
+				if found && dataLikeHeader(infos[i]) {
+					return fail.New("config-bad", "%s: the config names a table column of %s by its header, but that header looks like private data (a name, email or number). The config cannot name it: take it out of \"tables\". Standin tokenizes it. Fix it, then try again.", config.FileName, show(f.rel))
+				}
 			}
 		}
 		what := "field " + name

@@ -13,8 +13,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/RKelln/standin/internal/fail"
 	"github.com/RKelln/standin/internal/textenc"
@@ -116,6 +118,9 @@ func Parse(kind string, b []byte) (*Dataset, error) {
 	if (kind == CSV || kind == TSV || kind == Text) && hasLoneCR(text) {
 		return nil, fail.New("lone-cr", "This file ends its lines in an old way (a lone carriage return, from old Mac programs), so I cannot tell where rows end. Open it in a text editor or spreadsheet and save it with normal line endings, then try again.")
 	}
+	if err := refuseHidden(kind, text); err != nil {
+		return nil, err
+	}
 	var d *Dataset
 	switch kind {
 	case CSV:
@@ -132,8 +137,63 @@ func Parse(kind string, b []byte) (*Dataset, error) {
 	if err != nil {
 		return nil, err
 	}
+	if kind == JSON {
+		// A JSON string may spell a hidden mark as \u200b; look at the values too.
+		for col, name := range d.Columns {
+			if hasHidden(name) {
+				return nil, fail.New("hidden-char", "A name (key) in column %d holds a hidden character (like a zero-width space or a soft hyphen). It can hide a name from Standin. Remove it, then try again.", col+1)
+			}
+			for i, v := range d.Values[col] {
+				if hasHidden(v) {
+					return nil, fail.New("hidden-char", "Record %d, column %d holds a hidden character (like a zero-width space or a soft hyphen). It can hide a name from Standin. Remove it, then try again.", d.Recs[col][i], col+1)
+				}
+			}
+		}
+	}
 	d.Kind, d.Encoding = kind, enc
 	return d, nil
+}
+
+// hiddenRunes are format characters that do not show, so they can split a
+// name ("Zel\u200bda") where Standin would not see it: soft hyphen, zero-width
+// space, joiners, word joiner, and a byte order mark after the start.
+func isHidden(r rune) bool {
+	return r == '\u00ad' || (r >= '\u200b' && r <= '\u200d') || r == '\u2060' || r == '\ufeff'
+}
+
+// hasHidden finds a hidden character. A zero-width joiner between two
+// emoji (not letters) is how emoji like a family are built, so it is allowed.
+func hasHidden(s string) bool {
+	rs := []rune(s)
+	for i, r := range rs {
+		if !isHidden(r) {
+			continue
+		}
+		if r == '\u200d' && i > 0 && i+1 < len(rs) && !unicode.IsLetter(rs[i-1]) && !unicode.IsLetter(rs[i+1]) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// charRef is an HTML character reference (&#114; &#x72; &amp;) touching a
+// letter, so it may spell part of a word: Quo&#114;n.
+var charRef = regexp.MustCompile(`\pL&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);|&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);\pL`)
+
+// refuseHidden stops on hidden characters anywhere in the text (the byte
+// order mark at the start is already gone), and in .md and .txt on
+// character references inside a word, naming the line (decision 51).
+func refuseHidden(kind, text string) error {
+	for i, line := range strings.Split(text, "\n") {
+		if hasHidden(line) {
+			return fail.New("hidden-char", "Line %d holds a hidden character (like a zero-width space or a soft hyphen). It can hide a name from Standin. Remove it in a text editor, then try again.", i+1)
+		}
+		if kind == Text && charRef.MatchString(line) {
+			return fail.New("hidden-char", "Line %d has a code like &#114; or &amp; inside a word. It can hide a name from Standin. Write the plain letter instead, then try again.", i+1)
+		}
+	}
+	return nil
 }
 
 func parseCSV(text string, comma rune) (*Dataset, error) {

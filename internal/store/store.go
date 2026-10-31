@@ -55,6 +55,16 @@ func PrivateDir(project, override, home string) (string, error) {
 	return dir, nil
 }
 
+// Root is the folder that holds every private folder: $STANDIN_HOME, or
+// ~/.standin. The hooks guard all of it, not only this project's folder.
+func Root(home string) (string, error) {
+	root, err := projectsRoot(home)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(root), nil
+}
+
 // projectsRoot is $STANDIN_HOME/projects (home defaults to ~/.standin).
 func projectsRoot(home string) (string, error) {
 	if home == "" {

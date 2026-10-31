@@ -227,7 +227,7 @@ func Label(name string, index int) (label, flag string) {
 	if name == dataset.KeyColumn {
 		return name, ""
 	}
-	if kind, ok := scan.LooksLikeDataName(name); ok {
+	if kind, ok := scan.LooksLikeDataHeader(name); ok {
 		return fmt.Sprintf("[COLUMN_%d]", index+1), kind
 	}
 	if name == "" {

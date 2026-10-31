@@ -33,6 +33,9 @@ type Env struct {
 	// StdoutIsTerminal reports whether stdout goes to a screen (not a pipe,
 	// a file or an AI tool).
 	StdoutIsTerminal func() bool
+	// StderrIsTerminal reports whether stderr goes to a screen. Messages that
+	// name private-folder paths are shown only then (an agent reads a pipe).
+	StderrIsTerminal func() bool
 	Getenv           func(string) string
 	Version, Commit  string
 }
@@ -131,6 +134,9 @@ func Run(args []string, env Env) int {
 	}
 	if env.StdoutIsTerminal == nil {
 		env.StdoutIsTerminal = func() bool { return false }
+	}
+	if env.StderrIsTerminal == nil {
+		env.StderrIsTerminal = func() bool { return false }
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
 		usage(env.Stdout)
@@ -258,6 +264,12 @@ func (c *ctx) privateDir(create bool) (string, error) {
 func (c *ctx) movedHint(dir string) {
 	others := store.SameNameDirs(c.project, dir, c.env.Getenv("STANDIN_HOME"))
 	if len(others) == 0 {
+		return
+	}
+	if !c.env.StderrIsTerminal() {
+		c.warn("This project folder has no private folder yet, but a folder with the same name had one. " +
+			"If the project was moved, its stand-ins are in that old private folder. " +
+			"Ask the person to run `standin review` in their own terminal: it shows where the folders are.")
 		return
 	}
 	c.warn("This project folder has no private folder yet, but a folder with the same name had one.\n"+

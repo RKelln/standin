@@ -63,16 +63,21 @@ func atLeast(v, min string) bool {
 }
 
 // DenyRules are added to permissions.deny in the settings file init writes.
-func DenyRules(store string) []string {
+// store is this project's private folder; home is the folder that holds every
+// private folder ($STANDIN_HOME or ~/.standin), guarded whole.
+func DenyRules(store, home string) []string {
 	rules := []string{
 		"Read(./raw/**)", "Edit(./raw/**)",
 		"Read(./restored/**)", "Edit(./restored/**)",
 		"Read(**/mapping.json)", "Edit(**/mapping.json)",
+		"Read(**/words.json)", "Edit(**/words.json)",
 	}
-	if store != "" && filepath.IsAbs(store) && !strings.Contains(store, `\`) {
-		// "//path" is an absolute path in Claude Code rules. Skipped on Windows paths (form unverified).
-		s := "/" + filepath.ToSlash(store) + "/**"
-		rules = append(rules, "Read("+s+")", "Edit("+s+")")
+	for _, d := range []string{store, home} {
+		if d != "" && filepath.IsAbs(d) && !strings.Contains(d, `\`) {
+			// "//path" is an absolute path in Claude Code rules. Skipped on Windows paths (form unverified).
+			s := "/" + filepath.ToSlash(d) + "/**"
+			rules = append(rules, "Read("+s+")", "Edit("+s+")")
+		}
 	}
 	return rules
 }
@@ -94,17 +99,27 @@ func hookEntry(exe, event, private string) map[string]any {
 	}
 }
 
-// isOurs spots a hook that standin init wrote before (any binary path).
-func isOurs(h any) bool {
+// isOurs spots a hook that standin init wrote before: args "hook claude",
+// and a program called standin (or standin.exe) in any folder, or exe, the
+// program init writes now. Someone else's hook with the same args is kept.
+func isOurs(h any, exe string) bool {
 	m, ok := h.(map[string]any)
 	if !ok {
 		return false
 	}
 	args, ok := m["args"].([]any)
-	if !ok || len(args) < 2 {
+	if !ok || len(args) < 2 || args[0] != "hook" || args[1] != "claude" {
 		return false
 	}
-	return args[0] == "hook" && args[1] == "claude"
+	cmd, ok := m["command"].(string)
+	if !ok {
+		return false
+	}
+	if exe != "" && cmd == exe {
+		return true
+	}
+	base := cmd[strings.LastIndexAny(cmd, `/\`)+1:]
+	return base == "standin" || strings.EqualFold(base, "standin.exe")
 }
 
 // Settings files standin may write (decision 36).
@@ -116,8 +131,9 @@ var (
 // claudeOpts says how to set up Claude Code.
 type claudeOpts struct {
 	exe, private, store string
-	shared              bool // write .claude/settings.json, not settings.local.json
-	promptGuard         bool // add the UserPromptSubmit hook
+	home                string // the folder of all private folders, guarded whole
+	shared              bool   // write .claude/settings.json, not settings.local.json
+	promptGuard         bool   // add the UserPromptSubmit hook
 }
 
 // settingsFile is one Claude Code settings file, read as JSON.
@@ -168,17 +184,20 @@ func (f *settingsFile) change(note string) ([]change, error) {
 			return nil, nil
 		}
 	}
-	what := "made"
-	if f.exists {
-		what = "updated"
+	if !f.exists {
+		return []change{{rel: f.rel, path: f.path, data: buf.Bytes(), perm: 0o644, what: "made", note: note}}, nil
 	}
-	return []change{{rel: f.rel, path: f.path, data: buf.Bytes(), perm: 0o644, what: what, note: note}}, nil
+	// Keep the old file as <name>.bak, written first, so a person can go back.
+	return []change{
+		{rel: f.rel + ".bak", path: f.path + ".bak", data: f.old, perm: 0o600, what: "saved the old copy as"},
+		{rel: f.rel, path: f.path, data: buf.Bytes(), perm: 0o644, what: "updated", note: note},
+	}, nil
 }
 
 // stripOurs removes every hook standin wrote, from every event, and drops
 // groups and events left empty by that. Other hooks are kept as they were.
 // It reports whether it removed any.
-func stripOurs(f *settingsFile) (bool, error) {
+func stripOurs(f *settingsFile, exe string) (bool, error) {
 	v, ok := f.m["hooks"]
 	if !ok || v == nil {
 		return false, nil
@@ -208,7 +227,7 @@ func stripOurs(f *settingsFile) (bool, error) {
 			}
 			var rest []any
 			for _, h := range hs {
-				if !isOurs(h) {
+				if !isOurs(h, exe) {
 					rest = append(rest, h)
 				}
 			}
@@ -256,7 +275,7 @@ func planClaude(proj string, o claudeOpts) ([]change, error) {
 		return nil, err
 	}
 
-	if _, err := stripOurs(f); err != nil {
+	if _, err := stripOurs(f, o.exe); err != nil {
 		return nil, err
 	}
 	hooks, err := objAt(f.m, "hooks", rel)
@@ -303,7 +322,7 @@ func planClaude(proj string, o claudeOpts) ([]change, error) {
 			have[s] = true
 		}
 	}
-	for _, r := range DenyRules(o.store) {
+	for _, r := range DenyRules(o.store, o.home) {
 		if !have[r] {
 			deny = append(deny, r)
 		}
@@ -315,12 +334,16 @@ func planClaude(proj string, o claudeOpts) ([]change, error) {
 		return nil, err
 	}
 	if other.exists {
-		removed, err := stripOurs(other)
+		removed, err := stripOurs(other, o.exe)
 		if err != nil {
 			return nil, err
 		}
 		if removed {
-			c, err := other.change(" (took out standin's old hooks; they are now in " + filepath.ToSlash(rel) + ". Other settings kept)")
+			note := " (took out standin's old hooks; they are now in " + filepath.ToSlash(rel) + ". Other settings kept)"
+			if otherRel == sharedSettings {
+				note += ". Others who share this folder now have no standin hooks: each must run standin init on their own computer"
+			}
+			c, err := other.change(note)
 			if err != nil {
 				return nil, err
 			}

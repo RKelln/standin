@@ -31,38 +31,97 @@ func StoreDir(project, private string) (string, error) {
 	return corestore.PrivateDir(project, private, os.Getenv("STANDIN_HOME"))
 }
 
-// FindProject returns the project root. Order: CLAUDE_PROJECT_DIR (Claude
-// Code sets it to the folder whose settings it loaded), then the --project
-// flag (written by standin 0.1.0), then the nearest folder at or above cwd
-// that holds standin.config.json. A place that does not exist is skipped, so
-// a moved folder still works; if none is found it is an error (decision 34).
+// HomeDir returns the folder that holds every private folder ($STANDIN_HOME,
+// or ~/.standin), or "" if it cannot be found.
+func HomeDir() string {
+	r, err := corestore.Root(os.Getenv("STANDIN_HOME"))
+	if err != nil {
+		return ""
+	}
+	return r
+}
+
+// FindProject returns the project root (decision 34, refined in 47).
+// CLAUDE_PROJECT_DIR counts only if it holds standin.config.json; else the
+// walk starts there. Without it, an old --project flag (from standin 0.1.0)
+// counts if that folder still holds the config. Then the walk up from cwd.
+// A walk skips a config inside raw/, shape/, scrubbed/ or restored/ of an
+// outer project (a copy of a project there must not become the project). If
+// CLAUDE_PROJECT_DIR and cwd lead to two different projects, it is an error:
+// the hook cannot tell which rules to use.
 func FindProject(flagDir, cwd string) (string, error) {
+	var fromEnv string
 	if env := os.Getenv("CLAUDE_PROJECT_DIR"); env != "" {
 		if d, err := checkDir(env); err == nil {
-			return d, nil
+			fromEnv = walkUp(d)
 		}
 	}
-	if flagDir != "" {
-		if d, err := checkDir(flagDir); err == nil {
-			return d, nil
+	if fromEnv == "" && flagDir != "" {
+		if d, err := checkDir(flagDir); err == nil && hasConfig(d) && !inOuterZone(d) {
+			fromEnv = d
 		}
 	}
-	if cwd == "" {
+	var fromCwd string
+	if cwd != "" {
+		if d, err := filepath.Abs(cwd); err == nil {
+			fromCwd = walkUp(filepath.Clean(d))
+		}
+	}
+	switch {
+	case fromEnv != "" && fromCwd != "" && !sameDir(fromEnv, fromCwd):
+		return "", errors.New("found two different project folders (one from CLAUDE_PROJECT_DIR, one from the working folder), so it cannot tell which rules to use. Start Claude Code in the project folder, and work inside it")
+	case fromEnv != "":
+		return fromEnv, nil
+	case fromCwd != "":
+		return fromCwd, nil
+	case cwd == "" && os.Getenv("CLAUDE_PROJECT_DIR") == "":
 		return "", errors.New("cannot find the project folder, and the hook input has no cwd")
 	}
-	dir, err := filepath.Abs(cwd)
-	if err != nil {
-		return "", err
+	return "", errors.New("cannot find the project folder: no " + ConfigName + " in this folder or above it")
+}
+
+func hasConfig(dir string) bool {
+	st, err := os.Stat(filepath.Join(dir, ConfigName))
+	return err == nil && !st.IsDir()
+}
+
+func sameDir(a, b string) bool {
+	if norm(a) == norm(b) {
+		return true
 	}
+	ra, rb := resolve(a), resolve(b)
+	return ra != "" && norm(ra) == norm(rb)
+}
+
+// walkUp finds the nearest folder at or above dir that holds the config and
+// is not inside a zone folder of an outer project. "" if none.
+func walkUp(dir string) string {
 	for {
-		if _, err := os.Stat(filepath.Join(dir, ConfigName)); err == nil {
-			return dir, nil
+		if hasConfig(dir) && !inOuterZone(dir) {
+			return dir
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("cannot find the project folder: no " + ConfigName + " in this folder or above it")
+			return ""
 		}
 		dir = parent
+	}
+}
+
+// inOuterZone reports whether dir is inside raw/, shape/, scrubbed/ or
+// restored/ of a project above it.
+func inOuterZone(dir string) bool {
+	for a := filepath.Dir(dir); ; a = filepath.Dir(a) {
+		if rel, err := filepath.Rel(a, dir); err == nil && hasConfig(a) {
+			first := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
+			switch norm(first) {
+			case RawDir, ShapeDir, ScrubbedDir, RestoredDir:
+				return true
+			}
+		}
+		if filepath.Dir(a) == a {
+			return false
+		}
 	}
 }
 
@@ -107,6 +166,34 @@ func (z Zone) String() string {
 type Guard struct {
 	Project string
 	Store   string
+	// Home is the folder that holds every project's private folder
+	// ($STANDIN_HOME, or ~/.standin). It is guarded whole, so the agent cannot
+	// reach another project's mapping (say, one left behind by a move).
+	Home string
+}
+
+// home is the private-folders root to guard. If the project is inside it
+// (an odd STANDIN_HOME), only its projects/ folder is guarded, so the
+// project itself stays usable.
+func (g Guard) home() string {
+	if g.Home == "" {
+		return ""
+	}
+	h := filepath.Clean(g.Home)
+	for _, b := range []string{h, filepath.Join(h, "projects")} {
+		inside := false
+		for _, pf := range forms(g.Project) {
+			for _, bf := range forms(b) {
+				if within(pf, bf) {
+					inside = true
+				}
+			}
+		}
+		if !inside {
+			return b
+		}
+	}
+	return ""
 }
 
 func (g Guard) raw() string      { return filepath.Join(g.Project, RawDir) }
@@ -187,7 +274,7 @@ func (g Guard) bases() []struct {
 	return []struct {
 		z Zone
 		p string
-	}{{ZoneRaw, g.raw()}, {ZoneRestored, g.restored()}, {ZoneStore, g.Store}}
+	}{{ZoneRaw, g.raw()}, {ZoneRestored, g.restored()}, {ZoneStore, g.Store}, {ZoneStore, g.home()}}
 }
 
 // ZoneOf says which protected area the file path p is in (ZoneNone if none).

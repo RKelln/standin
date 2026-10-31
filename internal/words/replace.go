@@ -22,19 +22,40 @@ const Category = "NAME"
 // scan does), then every word whose key swap says yes to. A word is swapped
 // where it is capitalised or in a script with no capitals, and also in lower
 // case when it is not an English word ("thx oksana" is caught; "rich" and
-// "grace period" stay). A trailing 's stays outside the stand-in.
-func Replace(line string, known *scan.Known, m *mapping.Mapping, swap func(key string) bool) string {
+// "grace period" stay). A trailing 's stays outside the stand-in. In a word
+// joined by hyphens ("oksana-vantreeck"), each part swap says yes to is
+// swapped too. keepCal: the file's rule keeps day and month names.
+func Replace(line string, known *scan.Known, m *mapping.Mapping, swap func(key string) bool, keepCal bool) string {
 	if strings.TrimSpace(line) == "" {
 		return line
 	}
-	hits := Hits(line, known)
+	hits := Hits(line, known, keepCal)
 	var b strings.Builder
 	last := 0
-	words := func(seg string) {
+	ok := func(w string) bool {
+		return utf8.RuneCountInString(w) >= 2 && (IsCapitalised(w) || IsUncased(w) || !InDict(w)) && swap(Key(w))
+	}
+	var words func(seg string)
+	words = func(seg string) {
 		pos := 0
 		for _, t := range Tokens(seg) {
 			w := seg[t[0]:t[1]]
-			if utf8.RuneCountInString(w) < 2 || (!IsCapitalised(w) && !IsUncased(w) && InDict(w)) || !swap(Key(w)) {
+			if !ok(w) {
+				if strings.Contains(w, "-") {
+					b.WriteString(seg[pos:t[0]])
+					parts := strings.Split(w, "-")
+					for j, p := range parts {
+						if j > 0 {
+							b.WriteString("-")
+						}
+						if p != "" && ok(p) {
+							words(p)
+						} else {
+							b.WriteString(p)
+						}
+					}
+					pos = t[1]
+				}
 				continue
 			}
 			base := w

@@ -57,6 +57,7 @@ func (p *tp) run(stdin string, tty bool, args ...string) res {
 		StdinIsTerminal: func() bool { return tty },
 		// tty means a person at a screen: stdin and stdout are terminals.
 		StdoutIsTerminal: func() bool { return tty },
+		StderrIsTerminal: func() bool { return tty },
 		Getenv: func(k string) string {
 			if k == "STANDIN_HOME" {
 				return p.home

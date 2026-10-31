@@ -39,7 +39,13 @@ func init() {
 		export report statement statements summary list data file files sheet copy draft final new old
 		yes active inactive count average avg min max sum
 		ledger journal payroll inventory budget expense expenses income revenue donor donors
-		donation donations volunteer volunteers backup csv tsv json txt`) {
+		donation donations volunteer volunteers backup csv tsv json txt
+		clr lineitem etransfer e-transfer interac cheque cheques hrs
+		nom prénom prenom courriel téléphone telephone adresse ville pays montant solde facture factures
+		paiement paiements reçu recu dépôt depot retrait date heure jour mois année annee semaine
+		numéro numero compte banque carte taxe taxes prix quantité quantite produit produits catégorie categorie
+		statut état etat remarques commentaire commentaires sujet courriel expéditeur expediteur destinataire
+		entreprise société societe fournisseur membre membres bénévole benevole province région region code postal`) {
 		commonWords[w] = true
 	}
 }
@@ -121,6 +127,24 @@ func LooksLikeDataName(name string) (kind string, ok bool) {
 		if kind, ok := LooksLikeData(strings.TrimSuffix(p, "[]")); ok {
 			return kind, true
 		}
+	}
+	return "", false
+}
+
+// HeaderWords, when set, reports whether one word of a header reads like a
+// name by the word check's rules (a first name, or a capitalised word that
+// is not an English word). The words package sets it; it holds the lists.
+var HeaderWords func(name string) bool
+
+// LooksLikeDataHeader is LooksLikeDataName plus the word check on each word,
+// so a one-word name in a header ("Oksana") is hidden too. For headers,
+// table headers and JSON keys; not for file names.
+func LooksLikeDataHeader(name string) (kind string, ok bool) {
+	if kind, ok := LooksLikeDataName(name); ok {
+		return kind, true
+	}
+	if HeaderWords != nil && HeaderWords(name) {
+		return "name", true
 	}
 	return "", false
 }

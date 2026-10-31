@@ -102,9 +102,12 @@ the rest of it alone.
 - **The word check on `.md` and `.txt` misses:** a name that is also a common word, typed in lower
   case (rich, grace, will) or only at the start of a sentence ("Rose called"); a surname that is a
   word, with no first name or title next to it; business names made of words (City Hardware); names
-  inside links and handles (`@grace_lee`); and a person told apart by a story or a rare detail. For
+  inside links and handles (`@grace_lee`, `/people/ana-vantreeck`) unless Standin already swapped that
+  name elsewhere; and a person told apart by a story or a rare detail. For
   case notes and other text about people's lives, `drop` the text. Only English and French are
   checked well; tested on invented text only.
+- **Headers:** a column header that is a first name and also a common word (Grace, Rose) still shows
+  in the shape file.
 - **Patterns:** stand-ins still show which rows share a value, and how often.
 - **Combinations** (a postal code plus a job plus a date) can still point to one person.
 - **The guard hooks are a safety net, not a wall.** A shell script can still read `raw/`. Hooks do not see

@@ -72,7 +72,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err != nil {
 		return block(stderr, "standin hook: cannot work out the private store: "+err.Error())
 	}
-	c := &claude{in: in, g: Guard{Project: proj, Store: store}, stdout: stdout, stderr: stderr}
+	c := &claude{in: in, g: Guard{Project: proj, Store: store, Home: HomeDir()}, stdout: stdout, stderr: stderr}
 	switch event {
 	case "PreToolUse":
 		return c.preToolUse()

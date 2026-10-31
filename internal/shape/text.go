@@ -28,13 +28,20 @@ func TextMarkdown(d *dataset.Dataset, shownPath, version string, tc TextCounts) 
 		title = "a raw file (name hidden)"
 	}
 	fmt.Fprintf(&b, "# Shape of %s\n\n", title)
-	b.WriteString("Made by Standin " + version + ". This file describes the data. It holds no real values or words from it.\n")
+	infos := Columns(d)
+	b.WriteString("Made by Standin " + version + ". This file describes the data. It holds no real values.\n")
+	if len(infos) > 0 {
+		b.WriteString("It shows the field labels and table headers, as the config needs them, and hides any that look like private data. " +
+			"Known limit: a label that is a surname and also a common word (like Brown) would still show. " +
+			"Other words of the text are never shown.\n")
+	} else {
+		b.WriteString("It holds no words from the text.\n")
+	}
 	b.WriteString("Counts and lengths are given in ranges, so a single value cannot be picked out.\n\n")
 	if shownPath == "" {
 		b.WriteString("**The file name looks like private data** (for example a name or a number). ")
 		b.WriteString("Ask the person to rename the raw file to something plain, like `notes.md`, before going on.\n\n")
 	}
-	infos := Columns(d)
 	var fields []ColumnInfo
 	for i, c := range infos {
 		if d.Source[i] == dataset.FromField {

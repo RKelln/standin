@@ -385,3 +385,56 @@ gave 82 review words (23 unusual, nearly all brands and places, and 59 name-like
 keeping all 23 unusual words, 98% of name words were swapped (left: a brand that is also a surname, a
 hyphenated name the run kept, and two names typed in lower case that are also words). 1000 emails: 87
 review words; one name word left ("faith", in lower case). Binary 3.43 MB to 3.92 MB (stripped).
+
+### From the second fresh review (2026-10-31)
+
+46. **One-word names in headers are data.** Every header (CSV/TSV, Markdown table, JSON key path) also
+    gets the word check: a word that is not an English word or a common header word, and is
+    capitalised, in the first-name list, or in a script with no capitals, makes the header data-like
+    (`scan.LooksLikeDataHeader`; file names keep the old check). Such a header is `[COLUMN_n]` in shape
+    and messages, swapped in the output, and the config may not name it by its real name (scrub
+    refuses, naming `[COLUMN_n]`; a text-table header must not be in `tables` at all). Departures from
+    the brief: all-caps words of 2-4 letters (SKU, UTC, CRM) are short forms unless they are first
+    names; day and month names count as header words; some export and French header words joined the
+    common list (Clr, Lineitem, Etransfer, Courriel, Montant ...) so common exports still work. Cost:
+    a brand header (Shopify) can now only be tokenized or dropped. Miss: a header that is a first name
+    and also a word (Grace).
+47. **A known value is swapped everywhere, and scrub checks before it writes.** In the word check a
+    one-word `NAME` value is now swapped as a known value in any case and spot (also inside a link),
+    except a day or month name in a file whose rule keeps `calendar`. (Kept words and English words
+    were already left out of the known list.) The finder still lists such a word as a candidate
+    (reason "known name"), so a word swapped before approve is still asked about. Scrub's pass 2 runs
+    again if the mapping grew (a word swapped in a later file), then every scanned cell and
+    word-checked line is checked with the same finder as `check`; a hit refuses (exit 2, nothing
+    written), naming the file, the line or column and the stand-in, never the value. Departure:
+    kept columns are not checked. A keep is an approved value, and amounts or dates kept in one column
+    and tokenized in another are common: checking them refused a normal config in the tests.
+48. **Joined words and lower-case surnames.** Replace also swaps a part of a hyphen-joined word whose
+    key is on the swap or candidate list (`oksana-vantreeck` gives `[NAME_1]-vantreeck`); words joined
+    by `.` and `_` were already separate. A lower-case word that is not an English word, directly
+    after a caught name with only spaces between, is a candidate ("zelda quorn"). Miss: a part that is
+    on no list stays (`vantreeck` above).
+49. **Sentence starts.** The finder looks past `* _ ( [` and quotes to the text before a word; a colon is
+    no longer a sentence end ("Notes: Grace has" catches Grace; "Note: Will be late" now swaps "Will",
+    the safe side). Looking back: a capitalised first-name-list word right before a caught name is a
+    candidate even at a sentence start ("Rose Fairweather").
+50. **A day or month name next to a name joins the name-like group** ("April Okonkwo", "Ana June").
+    Choices are per word, so after that the word is name-like in the whole project: "in April" is
+    swapped too, unless the person keeps "april" in approve (which also keeps it in the name).
+51. **Hidden characters refuse.** A soft hyphen, zero-width space, non-joiner, joiner (except between two
+    emoji), word joiner or a byte order mark after the start, in any CSV, TSV, JSON (also as a `\u`
+    escape) or text file, refuses with the line (or record) number; so does an HTML character code
+    touching a letter in `.md`/`.txt` (`Quo&#114;n`, also `Q&amp;A`). The message says to remove it.
+52. **Guards.** The hooks guard the whole private-folders root (`$STANDIN_HOME` or `~/.standin`, and the
+    `--private` folder) for Read, Edit, Grep, Glob, LS and the Bash text check, and `init` adds deny
+    rules for it and for `words.json`. If the project sits inside that root, only its `projects/`
+    folder is guarded. The moved-project hint names the old and new private folders only when stderr
+    is a terminal; else it says to ask the person to run `standin review` themselves. Project
+    discovery: `CLAUDE_PROJECT_DIR` counts only if it holds the config (else the walk starts there),
+    then an old `--project` that still holds the config, then the walk from `cwd`; a walk skips a
+    config inside `raw/ shape/ scrubbed/ restored/` of an outer project; if `CLAUDE_PROJECT_DIR` and
+    `cwd` lead to two different projects, the hook blocks. `init` takes out only hooks whose program
+    is named `standin`/`standin.exe` (or is the binary it writes), saves `<file>.bak` before changing
+    a settings file, and when it takes hooks out of a shared `settings.json` it says others must run
+    `standin init` themselves. Terminal checks also refuse the null device. The text shape file says
+    it shows field labels and table headers (a surname that is also a word would show).

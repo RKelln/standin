@@ -249,6 +249,15 @@ trimming). Two inputs that would land on the same `restored/` name: refuse. Exit
   New words are swapped, never kept; scrub then warns "N new word(s) ... run standin approve" (exit 1).
   A word moved to keep marks its `NAME` row `"kept": true` in the mapping: it still restores, but
   scans, check and the hooks no longer look for it.
+- **Review fixes (DESIGN 46-52).** Headers, table headers and JSON keys also get the word check
+  (`scan.LooksLikeDataHeader`); such a header cannot be named in the config. A one-word `NAME` value is
+  a known value in the word check too (except a day name where the rule keeps `calendar`); scrub
+  re-runs pass 2 if the mapping grew, then refuses (exit 2) if a scanned cell or word-checked line still
+  holds a known value (kept columns are not checked). Hyphen-joined parts are swapped; a lower-case
+  non-word after a name, a first name before a caught name, and a day or month name next to a name are
+  candidates; the finder looks past `* _ ( [` and quotes, and a colon is not a sentence end. Hidden
+  format characters (and, in text, character codes touching a letter) refuse with the line number.
+  Hooks guard the whole `$STANDIN_HOME`; project discovery as in decision 52; two projects block.
 - **shape**: fields and table columns as column shapes; free text as count bands only (lines, unusual,
   name-like, calendar, pattern kinds). **review**: count bands only, plus new words since approve.
 

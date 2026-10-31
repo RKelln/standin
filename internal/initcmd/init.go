@@ -118,7 +118,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		case !atLeast(v, MinClaude):
 			warnings = append(warnings, "Claude Code "+v+" is older than "+MinClaude+" (--no-version-check). A broken hook may let data through.")
 		}
-		c, err := planClaude(proj, claudeOpts{exe: exe, private: *private, store: store, shared: *shared, promptGuard: !*noPromptGuard})
+		c, err := planClaude(proj, claudeOpts{exe: exe, private: *private, store: store, home: guardHome(proj), shared: *shared, promptGuard: !*noPromptGuard})
 		if err != nil {
 			return fail(err.Error())
 		}
@@ -264,6 +264,22 @@ func atomicWrite(path string, data []byte, perm os.FileMode) error {
 	}
 	ok = true
 	return nil
+}
+
+// guardHome is the private-folders root for the deny rules, or its
+// projects/ folder if the project is inside the root (an odd STANDIN_HOME),
+// so the rules never cover the project itself.
+func guardHome(proj string) string {
+	h := hook.HomeDir()
+	if h == "" {
+		return ""
+	}
+	for _, b := range []string{h, filepath.Join(h, "projects")} {
+		if !within(proj, b) {
+			return b
+		}
+	}
+	return ""
 }
 
 func within(p, base string) bool {

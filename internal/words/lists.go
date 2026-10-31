@@ -13,6 +13,7 @@ import (
 	"embed"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/RKelln/standin/internal/fail"
 	"github.com/RKelln/standin/internal/mapping"
@@ -141,8 +142,40 @@ func commonName(e mapping.Entry) bool {
 	return InDict(e.Key)
 }
 
+// headerNamed reports whether a header, table header or JSON key holds a
+// word that reads like a name (decision 46): a word that is not an English
+// word or a common header word, and is capitalised, in the first-name list,
+// or in a script with no capitals. Short all-caps words (2 to 4 letters, like
+// SKU or UTC) are taken as short forms unless they are first names. If the
+// lists cannot load, every header counts (fail closed).
+func headerNamed(name string) bool {
+	if Load() != nil {
+		return true
+	}
+	for _, t := range Tokens(name) {
+		w := name[t[0]:t[1]]
+		n := utf8.RuneCountInString(w)
+		k := Key(w)
+		if n < 2 || scan.IsCommonHeaderWord(k) || calendar[k] || InDict(w) {
+			continue
+		}
+		if first[k] || IsUncased(w) {
+			return true
+		}
+		if !IsCapitalised(w) {
+			continue
+		}
+		if n <= 4 && strings.ToUpper(w) == w {
+			continue // a short form: SKU, UTC, CRM
+		}
+		return true
+	}
+	return false
+}
+
 func init() {
 	scan.SkipKnown = commonName
+	scan.HeaderWords = headerNamed
 	for _, w := range strings.Fields(`monday tuesday wednesday thursday friday saturday sunday
 		mon tue tues wed thu thur thurs fri sat sun
 		january february march april may june july august september october november december
