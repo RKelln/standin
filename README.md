@@ -11,9 +11,10 @@ It is made for small businesses and non-profits who want to use an AI coding age
 similar) on their own records: invoices, bank exports, customer lists. It is the tool behind the "share
 safely" step of [Get2Know](https://github.com/RKelln/get2know).
 
-**Status:** v0.1.0, early. Tested on invented files and in Claude Code 2.1.314 on Linux. Not yet used
-by real people on real exports. Its name spotting has been measured once on real writing (see "How
-well the name spotting works" below). See also "What it misses".
+**Status:** v0.2.0, early, and **under test only: no real-world use yet.** No business or non-profit
+has run it on its own records. It is tested on invented files and in Claude Code 2.1.314 on Linux,
+and its name spotting has been measured once on real writing (see "How well the name spotting
+works" below). See also "What it misses".
 
 ## Install
 
@@ -105,7 +106,9 @@ ordinary English word — "Crow", "Beet" — in a sentence that gives no other c
 name that is not an ordinary word was found every time.
 
 Those are court documents, not shop records, so expect different numbers on your files. It is the
-first measurement on real writing rather than on invented examples.
+first measurement on real writing rather than on invented examples: a test result, not a report from
+use. Nobody has yet run Standin on a real business's files, so treat the number as what the checking
+can do, not as what it has done.
 
 ### Email (`.eml`)
 
