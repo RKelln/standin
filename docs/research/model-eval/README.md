@@ -56,6 +56,18 @@ go run . -corpus ../corpus_hard.json -model /path/to/bert-small-dir -out go.json
 
 The model directory needs `model.onnx` (fp32, 114 MB), `tokenizer.json` and `config.json`.
 
+## Teacher pass
+
+`teach.py` diffs the shipped check against a model and prints the three buckets a person reviews
+(model-only needs eyes, word-check-only is tuning information, agreed needs nothing):
+
+```sh
+python teach.py corpus_hard.json det_hard.json int8_hard_m.json
+```
+
+It needs the wordreport output (candidates **and** patterns) and a merged model output. See
+`../teacher-pass-plan.md` for what to do with the buckets.
+
 ## Score
 
 ```sh
