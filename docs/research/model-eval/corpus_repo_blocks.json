@@ -1,0 +1,317 @@
+[
+ {
+  "id": "inbox.md:2",
+  "line": "Everything here is made up.\nHi Sam,\nThanks again for the tune-up last April. Say hi to Thiago.\nCheers,",
+  "gold": [
+   "Sam",
+   "Thiago"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:13",
+  "line": "Yaretzi\nHi Sam and Grace,\nDo you have Brompton pads in stock? I live near Roncesvalles.\nThanks,",
+  "gold": [
+   "Grace",
+   "Sam",
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:24",
+  "line": "Farida\nHi Sam,\nDo you have Quillfeather pads in stock? I live near Dundas.\nCheers,",
+  "gold": [
+   "Farida",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:35",
+  "line": "Farida\nHi Sam and Grace,\nCan I book a chain replacement for Friday? My Shimano is making a noise.\nRegards,",
+  "gold": [
+   "Farida",
+   "Grace",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:46",
+  "line": "Kofi\nHi Sam and Grace,\nCan you text Bolat when the bike is done? The number is 416-555-0187.\nRegards,",
+  "gold": [
+   "Bolat",
+   "Grace",
+   "Kofi",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:57",
+  "line": "Grace\nHi Sam and Grace,\nCan you text Oksana when the bike is done? The number is 416-555-0120.\nCheers,",
+  "gold": [
+   "Grace",
+   "Oksana",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:68",
+  "line": "Grace\nHi Sam and Rose,\nCan you text Bolat when the bike is done? The number is 416-555-0120.\nCheers,",
+  "gold": [
+   "Bolat",
+   "Grace",
+   "Rose",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:79",
+  "line": "Ines\nHi Sam,\nMy partner Oksana will pick up the bike on Wednesday after work.\nCheers,",
+  "gold": [
+   "Ines",
+   "Oksana",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:90",
+  "line": "Bolat\nHi Sam and Rose,\nMy partner Oksana will pick up the bike on Friday after work.\nThanks,",
+  "gold": [
+   "Bolat",
+   "Oksana",
+   "Rose",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:101",
+  "line": "Rose\nHi Sam,\nMy partner Nkemdi will pick up the bike on Wednesday after work.\nThanks,",
+  "gold": [
+   "Nkemdi",
+   "Rose",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:112",
+  "line": "Hope\nHi Sam,\nMy partner Bolat will pick up the bike on Friday after work.\nCheers,",
+  "gold": [
+   "Bolat",
+   "Hope",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:123",
+  "line": "Grace\nHello,\nThanks again for the tune-up last March. Say hi to Farida.\nThanks,",
+  "gold": [
+   "Farida",
+   "Grace"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:134",
+  "line": "Yaretzi\nHi Sam,\nCan you text Thiago when the bike is done? The number is 416-555-0147.\nCheers,",
+  "gold": [
+   "Sam",
+   "Thiago",
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:145",
+  "line": "Ines\nHi Sam and Rose,\nCan I book a brake pads for Wednesday? My Shimano is making a noise.\nCheers,",
+  "gold": [
+   "Ines",
+   "Rose",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:156",
+  "line": "Tavish\nHello,\nCan I book a wheel true for Wednesday? My Shimano is making a noise.\nRegards,",
+  "gold": [
+   "Tavish"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:167",
+  "line": "Rose\nHi Sam and Hope,\nCan you text Saoirse when the bike is done? The number is 416-555-0131.\nThanks,",
+  "gold": [
+   "Hope",
+   "Rose",
+   "Sam",
+   "Saoirse"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:178",
+  "line": "Yaretzi\nHi Sam and Hope,\nMy partner Kofi will pick up the bike on Monday after work.\nCheers,",
+  "gold": [
+   "Hope",
+   "Kofi",
+   "Sam",
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:189",
+  "line": "Thiago\nHi Sam and Rose,\nDo you have Quillfeather pads in stock? I live near Dundas.\nCheers,",
+  "gold": [
+   "Rose",
+   "Sam",
+   "Thiago"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:200",
+  "line": "Rose\nHi Sam,\nCan you text Kofi when the bike is done? The number is 416-555-0152.\nCheers,",
+  "gold": [
+   "Kofi",
+   "Rose",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:211",
+  "line": "Rose\nHi Sam and Grace,\nMy partner Yaretzi will pick up the bike on Thursday after work.\nThanks,",
+  "gold": [
+   "Grace",
+   "Rose",
+   "Sam",
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:222",
+  "line": "Kofi\nHi Sam and Rose,\nThanks again for the chain replacement last March. Say hi to Yaretzi.\nRegards,",
+  "gold": [
+   "Kofi",
+   "Rose",
+   "Sam",
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:233",
+  "line": "Kofi\nHi Sam,\nThanks again for the brake pads last March. Say hi to Yaretzi.\nCheers,",
+  "gold": [
+   "Kofi",
+   "Sam",
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:244",
+  "line": "Thiago\nHi Sam,\nCan you text Yaretzi when the bike is done? The number is 416-555-0126.\nCheers,",
+  "gold": [
+   "Sam",
+   "Thiago",
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:255",
+  "line": "Rose\nHi Sam,\nDo you have Shimano pads in stock? I live near Roncesvalles.\nCheers,",
+  "gold": [
+   "Rose",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:266",
+  "line": "Saoirse\nHi Sam and Grace,\nDo you have Quillfeather pads in stock? I live near Roncesvalles.\nThanks,",
+  "gold": [
+   "Grace",
+   "Sam",
+   "Saoirse"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:277",
+  "line": "Bolat\nHello,\nDo you have Quillfeather pads in stock? I live near Roncesvalles.\nRegards,",
+  "gold": [
+   "Bolat"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:288",
+  "line": "Farida\nHi Sam and Rose,\nDo you have Brompton pads in stock? I live near Roncesvalles.\nRegards,",
+  "gold": [
+   "Farida",
+   "Rose",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:299",
+  "line": "Nkemdi\nHi Sam,\nCan you text Ines when the bike is done? The number is 416-555-0136.\nThanks,",
+  "gold": [
+   "Ines",
+   "Nkemdi",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:310",
+  "line": "Yaretzi\nHello,\nCan I book a flat repair for Wednesday? My Brompton is making a noise.\nRegards,",
+  "gold": [
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:321",
+  "line": "Hope\nHi Sam and Hope,\nThanks again for the chain replacement last July. Say hi to Farida.\nCheers,",
+  "gold": [
+   "Farida",
+   "Hope",
+   "Sam"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "inbox.md:332",
+  "line": "Bolat",
+  "gold": [
+   "Bolat"
+  ],
+  "class": "4 prose lines"
+ },
+ {
+  "id": "notes.md:6",
+  "line": "- Yaretzi to call the supplier about Shimano pads.\n- Ask Farida about the Dundas lease. Grace has the keys.\n- Order new tubes before the spring rush.\nNext meeting: Tuesday, April 7.",
+  "gold": [
+   "Farida",
+   "Grace",
+   "Yaretzi"
+  ],
+  "class": "4 prose lines"
+ }
+]
