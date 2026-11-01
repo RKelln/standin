@@ -21,12 +21,62 @@ purpose: names that are also words (`Rose`, `Rich`, `Daisy`), lower-case names, 
 sign-offs, names in `scan` columns. Because the generator plants every name, truth is exact and free
 — no model needed to label it, and this is where a rules change is tested.
 
-**(B) Real and public, no labels.** The gap between "my generator is messy" and "an actual inbox is
-messy" is the whole question, and it cannot be closed with real private data — the repo rule and the
-tool's own ethics both forbid it. Use public business email corpora (the Enron corpus is the standard
-for PII and NER research: real, public by court order, shop-shaped). A few hundred messages is
-enough. Truth here is unknown, which is the point: it is the model's job to propose, and a person's
-job to adjudicate.
+**(B) Real and public.** The gap between "my generator is messy" and "an actual inbox is messy" is
+the whole question, and it cannot be closed with real private data — the repo rule and the tool's own
+ethics both forbid it. Two public sources carry it, and they are used differently:
+
+- **TAB (Text Anonymisation Benchmark)** — 1,268 real ECHR judgments, **MIT**, ungated, and *labelled*:
+  person mentions carry `DIRECT` / `QUASI` / `NO_MASK` mask decisions and co-reference chains, so
+  "should this have been masked" and "is this the same person again" are already answered. This is
+  the measuring instrument.
+- **Enron** — real workplace email, ~500k messages, **no licence grant**: the CMU page says only that
+  it is distributed "as a resource for researchers" and asks that the employees' privacy be
+  respected. Use it **internally, never published, never committed**, purely to check that TAB's
+  legal register is not standing in for inbox mess. It is the closest thing to the tool's actual
+  domain that exists in public.
+
+Supporting sets for the one class that matters, all reported by the survey and re-runnable in
+minutes: **LitBank** (public-domain fiction, CC BY 4.0 annotations — where names that are ordinary
+words are densest), **UNER-English** (CC BY-SA, real email/reviews/newsgroups, includes lower-case
+person annotations like `hi mark -`), **WikiGold** (small, CC BY 4.0, a precision sanity check).
+
+### The licence board (verified 2026-10-31)
+
+| source | can we measure? | can we commit a sample to an MIT repo? | note |
+|---|---|---|---|
+| TAB | yes | **yes** (MIT) | the only labelled real-text set that is permissive |
+| LitBank | yes | **yes** (CC BY 4.0; texts are public domain) | best density of word-names |
+| Enron | yes | **no** (no licence grant) | internal use only |
+| UNER-English | yes | no (CC BY-**SA**) | share-alike contaminates an MIT repo |
+| CUAD | yes | yes (CC BY 4.0 on Zenodo) | contracts; names sparse, good for false positives |
+| RAT-Bench | yes | yes (MIT) | synthetic; the only re-identification benchmark |
+| ai4privacy | no | **no** — "Commercial entities should contact licensing@ai4privacy.com" | research-only trap |
+| Canadian Hansard, Quebec AN | yes | **no** — commercial use barred | also requires "accurate reproduction" |
+| OGL-Canada (federal open data) | — | **no** — the licence "does not grant any right to use: Personal Information" | rules out most federal Canadian data before you start |
+| Quebec enterprise registry | yes | no (NC) *and* names are stripped | "les noms, prénoms et adresses des personnes physiques, sont absents" |
+| CoNLL-2003 / OntoNotes / ACE | yes | **no** — no licence / LDC user agreement | CoNLL's text is Reuters copyright; never commit a sentence |
+| MultiNERD, Few-NERD | yes | no | labels are machine-generated, not gold |
+
+**No public corpus of French-Canadian business correspondence exists** under a usable licence, and
+none of the Canadian sources that do have real names can be committed. The French story therefore
+stays what the README says it is: untested, offered as candidates, meant to be kept by the person.
+
+### What TAB already tells us, before any model runs
+
+`tab_overlap.py` asks, of TAB's 8,596 annotated person mentions: is every token an English dictionary
+word (so the "not an English word" rule is silent) **and** is no token in the first-name list (so the
+first-name rule is silent)? Those mentions cannot be seen by the word rules at all.
+
+- every token an English word: **9.5%**
+- no token in the first-name list: **66.3%** (they are still caught, because they are not English
+  words; this is the *list* gap, not a leak)
+- **both → invisible: 6.9%**, e.g. `Crow`, and annotation quirks such as `Thrilling` and one span that
+  is a whole sentence
+
+So on real legal prose, roughly one person mention in fourteen sits where the deterministic rules have
+no signal — and some of that 6.9% is annotation noise rather than a true miss. That is a small number
+and it is the right shape: the residue is the ambiguity class, not the volume class. It is also the
+first honest recall estimate the project has that is not measured on eleven lines from a bike shop.
 
 **(C) The tool's own output.** Run `scrub` over (B) and look at what survived. No labels at all, and
 no adjudication — this produces the leak rate directly. See step 6.
@@ -101,6 +151,13 @@ model:
 - **still high after two rounds**: the residual is genuinely model-shaped (a name that is a word, in
   an ambiguous position), and now a sidecar has an evidence file behind it.
 
+**The one benchmark that scores what Standin cannot do.** RAT-Bench (Feb 2026) anonymises profiles
+and then has an LLM *attacker* try to re-identify them, reporting a re-identification rate against
+census microdata instead of a span F1 — the honest yardstick for a "share safely" claim, and the only
+public benchmark of its kind found. It is synthetic, US-centred, and its MIT is declared on the model
+card while the GitHub repo has no LICENSE file. Not needed for the teacher pass; worth knowing that if
+Standin ever publishes a claim, this is the thing to run it through rather than a recall number.
+
 This ordering matters: the audit is also the cheapest possible form of the product. If it is useful
 on its own, `standin audit` can ship as a one-shot command reading `scrubbed/` and printing counts,
 which needs no config change, no scrub-path change and — because it is one-shot — no native library.
@@ -144,7 +201,9 @@ list item, a one-word paragraph) needs measuring on corpus (B) first.
 |---|---|
 | corpora, runners, scorer, span merger | **done** — `model-eval/` |
 | three-bucket diff | **done** — `teach.py` |
-| public-corpus adapter (Enron slice → the same JSON) | ~half a day |
+| TAB overlap measurement | **done** — `model-eval/tab_overlap.py` |
+| TAB → corpus JSONL adapter (so the same scorer runs on it) | ~an hour |
+| Enron slice adapter (internal only, never committed) | ~half a day |
 | adjudication of ~200 rows | an hour or two of attention |
 | `testdata/eval/` + a Go regression test | ~half a day |
 

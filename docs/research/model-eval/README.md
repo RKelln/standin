@@ -56,6 +56,17 @@ go run . -corpus ../corpus_hard.json -model /path/to/bert-small-dir -out go.json
 
 The model directory needs `model.onnx` (fp32, 114 MB), `tokenizer.json` and `config.json`.
 
+## Corpus overlap
+
+`tab_overlap.py` measures, on the Text Anonymisation Benchmark (MIT, real ECHR judgments), how many
+annotated person mentions the word check cannot see at all — every token an English word and no token
+in the first-name list. Clone TAB next to it and pass the dev/test JSON:
+
+```sh
+git clone --depth 1 https://github.com/NorskRegnesentral/text-anonymization-benchmark /tmp/tab
+python tab_overlap.py /tmp/tab/echr_dev.json /tmp/tab/echr_test.json
+```
+
 ## Teacher pass
 
 `teach.py` diffs the shipped check against a model and prints the three buckets a person reviews
