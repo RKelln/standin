@@ -5,6 +5,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -127,4 +128,49 @@ func TestWindowsEnsureTightensOldPrivateFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertUserOnlyACL(t, p)
+}
+
+// The permission handle must be checked against the already-open temp file,
+// rather than trusting whichever file the supplied path currently names.
+func TestWindowsSecureFileRefusesDifferentFile(t *testing.T) {
+	dir := canonicalTempDir(t)
+	first := filepath.Join(dir, "first.tmp")
+	other := filepath.Join(dir, "other.tmp")
+	f, err := os.OpenFile(first, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := os.WriteFile(other, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureFile(other, f); err == nil {
+		t.Fatal("permission check accepted a path to a different file")
+	} else if !strings.Contains(err.Error(), "match the permission handle") {
+		t.Fatalf("identity check did not reach the handle comparison: %v", err)
+	}
+	for _, path := range []string{first, other} {
+		st, err := os.Stat(path)
+		if err != nil || st.Size() != 0 {
+			t.Fatal("permission check must not write file contents")
+		}
+	}
+	// A matching handle still gets a protected current-user ACL while empty.
+	if err := secureFile(first, f); err != nil {
+		t.Fatalf("could not secure matching empty file: %v", err)
+	}
+	assertUserOnlyACL(t, first)
+}
+
+func TestWindowsPermissionFailureDetailsHidePaths(t *testing.T) {
+	err := filePermissionError("read file details for the permission check", &os.PathError{
+		Op: "GetFileInformationByHandle", Path: `C:\Zelda Quorn\private.tmp`, Err: syscall.ERROR_ACCESS_DENIED,
+	})
+	if !strings.Contains(err.Error(), "Windows code 5") || strings.Contains(err.Error(), "Zelda") || strings.Contains(err.Error(), "private.tmp") {
+		t.Fatalf("permission failure lost its safe detail: %v", err)
+	}
 }

@@ -298,6 +298,11 @@ func WriteAll(outs []Out) (result error) {
 		}
 		f, tmp, err := rootTemp(r, dir, o.Perm)
 		if err != nil {
+			if fail.Code(err) == "private-permissions" {
+				// This is already a data-free refusal. Keep its ACL step guidance
+				// instead of hiding it behind a generic system-error message.
+				return err
+			}
 			return withCleanup(fail.New("write", "I could not write an output file (%s). I did not save the final output files.", fail.Reason(err)), atomicCleanupError(err))
 		}
 		s.tmp = tmp

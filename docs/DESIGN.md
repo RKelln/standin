@@ -645,3 +645,15 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     encodings and CRLF. Why: the first native Windows CI stopped at `go mod tidy -diff`. A scratch
     checkout with CRLF module files reproduced a failing diff with no dependency changes. Explicit
     Git attributes remove that checkout-dependent difference without rewriting format fixtures.
+88. **Windows ACL handles need metadata rights for the identity check.** The first native Windows
+    tests could not secure an empty private temp, causing approval, scrub and recovery tests to fail
+    afterward. The permission handle now requests Go's `File.Stat` metadata access set as well as
+    `WRITE_DAC`; it still requests no file-data read or write rights. The no-follow open and SameFile
+    comparison remain mandatory before setting the current-user-only ACL or writing private bytes.
+    Go's `internal/syscall/windows/at_windows.go` adds the same metadata rights to allow `File.Stat`;
+    [Microsoft's query documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile)
+    requires read-attribute access for basic file information. Native regression tests reject a path
+    naming a different file and verify a matching empty file's protected ACL. Permission refusals
+    now name a fixed failing step and numeric Windows code, never a private path; the output writer
+    preserves that safe guidance. Cross-builds and vet do not establish native runtime success:
+    Windows CI must confirm the fix before release.
