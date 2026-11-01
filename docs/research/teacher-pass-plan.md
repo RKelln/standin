@@ -199,12 +199,21 @@ which needs no config change, no scrub-path change and — because it is one-sho
 
 ## Worked example, 2026-10-31
 
-`hard` (52 lines, 39 gold names): 27 agreed, 16 word-check-only, **7 model-only** — five names that
-are words (`Rose`, `Rich`, `Mark`, `Daisy`, `Stone`), one path segment (`ana-vantreeck`), and one
-model error (`cc`). Reading seven rows produced the handle rule.
+`hard` (52 lines, 39 gold names): 26 agreed, 17 word-check-only, **8 model-only** — five names that
+are words (`Rose`, `Rich`, `Mark`, `Daisy`, `Stone`), one path segment (`ana-vantreeck`), one model
+error (`cc`), and one real miss the first version of the tool hid (`Mei-Ling`: a hyphenated name whose
+second part is an English word, so neither the dictionary rule nor the first-name rule fires).
 
-`repo` (125 lines, 93 gold names): 91 agreed, 36 word-check-only, **15 model-only** — ten one-word
-lines, one mid-sentence word-name (`Grace has the keys`), and four model errors (`pads` ×3, `lease`).
+`repo` (125 lines, 93 gold names): 89 agreed, 38 word-check-only, **17 model-only** — ten one-word
+lines, one mid-sentence word-name (`Grace has the keys`), and the rest model errors (`pads` ×3,
+`lease`).
+
+**The bucket tool had the same bug as the harness, and hid rows.** `teach.py` first asked whether a
+model span *contained* a word-check candidate. A span `Mr G. Blades` contains the candidate `Mr`, so
+the row filed as "agreed" and the name underneath never reached a person — the TAB adapter's diagnostic
+counted 37 of 49 recoverable misses hidden this way. Agreement now requires a **name token**: titles, ranks and initials never
+count. That is the second time in this exercise that the measuring tool, not the detector, was the
+thing that was wrong; budget for it.
 
 **Caveat, and it is the lesson of the exercise:** those ten one-word lines are an artefact of scoring
 lines in isolation. The sign-off rule needs the *previous* line, and the same lines are caught when

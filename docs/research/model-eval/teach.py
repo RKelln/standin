@@ -13,8 +13,12 @@ usage:
   python teach.py corpus_hard.json det_hard.json int8_hard_m.json
 """
 import json
+import pathlib
 import sys
 from collections import Counter
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from tab_overlap import NOT_A_NAME  # noqa: E402  (titles are not names)
 
 corpus_path, det_path, model_path = sys.argv[1], sys.argv[2], sys.argv[3]
 corpus = {r["id"]: r for r in json.load(open(corpus_path))}
@@ -51,19 +55,42 @@ def overlaps(word, spans, line):
         start = i + 1
 
 
+def name_tokens(text):
+    """The tokens of a span that could be a name: titles, ranks and initials are
+    not. 'Mr G. Blades' has one name token, 'Blades'."""
+    out = []
+    for t in text.replace("-", " ").split():
+        w = t.strip(".,;:()[]'\u2019\u2018\u201c\u201d-").lower()
+        if len(w) > 1 and w not in NOT_A_NAME:
+            out.append(w)
+    return out
+
+
+def covered(word, spans):
+    """Was this candidate caught by the model? Only a NAME token counts. A span
+    'Mr G. Blades' contains the word-check candidate 'Mr', but masking 'Mr'
+    does not mask the name, so a title must never read as agreement."""
+    w = word.lower()
+    if w in NOT_A_NAME:
+        return False
+    return any(w in name_tokens(s["text"]) for s in spans)
+
+
 model_only, det_only, agreed = [], [], []
 for cid, c in corpus.items():
     words = det_words(det.get(cid, {"candidates": []}))
     spans = model_spans(model.get(cid, {"spans": []}))
+    caught = set()
     for w in words:
-        if overlaps(w, spans, c["line"]):
+        if covered(w, spans):
             agreed.append((cid, w, c["line"]))
+            caught.add(w.lower())
         else:
             det_only.append((cid, w, c["line"]))
     for s in spans:
-        t = s["text"].strip()
-        if t and not any(t.lower() in w.lower() or w.lower() in t.lower() for w in words):
-            model_only.append((cid, t, s["label"], c["line"]))
+        toks = name_tokens(s["text"])
+        if toks and not any(t in caught for t in toks):
+            model_only.append((cid, s["text"].strip(), s["label"], c["line"]))
 
 print(f"# teacher pass: {corpus_path}")
 print(f"\n{len(model_only)} model-only, {len(det_only)} word-check-only, {len(agreed)} agreed\n")
