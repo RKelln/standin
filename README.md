@@ -11,8 +11,9 @@ It is made for small businesses and non-profits who want to use an AI coding age
 similar) on their own records: invoices, bank exports, customer lists. It is the tool behind the "share
 safely" step of [Get2Know](https://github.com/RKelln/get2know).
 
-**Status:** v0.1.0, early. Tested on invented data and in Claude Code 2.1.314 on Linux. Not yet tested by
-real users or on real exports. See "What it misses" below.
+**Status:** v0.1.0, early. Tested on invented files and in Claude Code 2.1.314 on Linux. Not yet used
+by real people on real exports. Its name spotting has been measured once on real writing (see "How
+well the name spotting works" below). See also "What it misses".
 
 ## Install
 
@@ -94,6 +95,17 @@ fill it in by hand where you need it.
 - A word that is new since you last approved becomes a stand-in, and scrub says how many (exit 1).
 - A `.txt` that is really a table is refused: rename it to `.csv`. A file mostly in a script with no
   capital letters (Chinese, Arabic ...) is refused: Standin cannot find names in it.
+
+### How well the name spotting works
+
+On 254 real court judgments (the public Text Anonymisation Benchmark, MIT licence), the word check
+found **99.1%** of the names a person had marked as needing to be masked, and masked every word of
+**98.2%** of them. When it misses, the cause is nearly always the same: a name that is also an
+ordinary English word — "Crow", "Beet" — in a sentence that gives no other clue it means a person. A
+name that is not an ordinary word was found every time.
+
+Those are court documents, not shop records, so expect different numbers on your files. It is the
+first measurement on real writing rather than on invented examples.
 
 ### Email (`.eml`)
 

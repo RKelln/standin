@@ -294,3 +294,27 @@ The residual after the fix is 17 mentions: 11 `juror` (a role), 4 `AM` (the cour
 pseudonymisation, which the annotators treat as identifying), and 2 `Beet`. That is close to the
 floor for a word-level detector: nothing in "the applicant Beet" distinguishes the surname from the
 vegetable except the syntax around it.
+
+### What the fix did to the model's case
+
+Same corpus, same model output (`int8_tab_m.json`), the improved word check:
+
+| | rules alone | bert-small int8 alone | union |
+|---|---|---|---|
+| DIRECT+QUASI (1,988) | **99.1%** | 92.5% | 99.2% |
+| all tokens English words (144) | **88.2%** | 77.8% | 89.6% |
+
+The model's marginal value collapsed: before decision 91 the union beat the rules by 2.5 points
+(96.8% → 99.2%) and by 34 points on the word-name class (55.6% → 89.6%). After the fix it adds **two
+mentions** — 0.1 of a point overall and 1.4 on the class.
+
+That is the most useful number in this document, and it is not about the model. Most of what the
+model appeared to contribute was a proxy for a bug: on real judgments a name nearly always arrives
+with a title or a rank in front of it, and the detector was dropping the name at the initial. Fix the
+detector and the model's advantage on this corpus is almost entirely explained away.
+
+It does **not** settle the model question, for one reason: ECHR judgments are formal. Almost every
+name in them is `Mr X` or `Sergeant Y`. Shop correspondence is not — `Rose called about the invoice`
+has no title, no rank and no dictionary clue, which is precisely the case a model is for. Whether
+that case is common in a real inbox is the audit question (`teacher-pass-plan.md` step 6), and it
+needs corpus (B), not TAB.

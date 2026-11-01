@@ -128,7 +128,11 @@ gets quietly less honest.
 ## 5. What would make A the wrong call
 
 - An audit (B) shows fewer than about one surviving span per thousand words on real-shaped corpora.
-  Then the model is buying a rounding error and the platform matrix is not worth it.
+  Then the model is buying a rounding error and the platform matrix is not worth it. **The first
+  evidence of this kind arrived the same day**: on 254 real judgments, once a detector bug was fixed
+  (decision 91), the model added two mentions out of 1,988 — 0.1 of a point. The caveat is that
+  judgments are formal text, where names nearly always carry a title; the shop case has no title to
+  lean on, and that is what the audit on corpus (B) would measure.
 - The six-platform matrix cannot be verified. An optional artifact that only works on Linux is worse
   than no artifact, because the docs promise it.
 - The person cannot tell whether it ran. If the difference between "model-checked" and "not" is

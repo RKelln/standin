@@ -208,6 +208,14 @@ second opinion is worth anything.
 the fp32 model's 33/39, 90/93, 88/91, at 0.6–1.2 ms/line versus 4 ms/line. If a model ever ships, it
 ships quantized.
 
+**Update, 2026-10-31 (later the same day).** Decision 91 fixed a detector bug this evaluation
+exposed — a title's name spot was dropped at an initial, so `Mr D. Price` named nobody. On 254 real
+judgments that took the word check from 96.8% to 99.1% and the model's marginal value from +2.5
+points to **+0.1** (two mentions). The shop-corpus union figures below (97–100%) are unchanged,
+because those fixtures were written around the word-name class on purpose. Read this report's
+"the model's value is the union" finding as conditional on the rules being what they were; the
+authoritative before-and-after is in `tab-results.md`.
+
 **What this measurement is not.** n = 39 / 93 / 91 name instances on synthetic text. The `hard` set
 was written by me to probe specific classes, so it measures those classes, not real documents. The
 `repo` set is Standin's own invented fixtures — small, and built to be easy. The numbers are
