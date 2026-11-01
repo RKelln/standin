@@ -299,9 +299,15 @@ func (f *Finder) addLine(line, prevLine string) {
 	hitAt := make([]bool, len(toks)) // the word was caught as a name (not just a day name)
 	calAt := make([]bool, len(toks)) // the word is a day or month name candidate
 	hitPrev := false
+	spotCarry := false // a title's name spot, kept across initials (decision 91)
 	for i, t := range toks {
 		a, b := t[0], t[1]
 		w := line[a:b]
+		prevw, between := "", ""
+		if i > 0 {
+			prevw = strings.ToLower(line[toks[i-1][0]:toks[i-1][1]])
+			between = strings.TrimSpace(line[toks[i-1][1]:a])
+		}
 		if covered(hits, a, b) {
 			hitPrev = false
 			continue
@@ -314,6 +320,10 @@ func (f *Finder) addLine(line, prevLine string) {
 			continue
 		}
 		if utf8.RuneCountInString(w) < 2 {
+			// An initial is not a name, but it must not break the name spot a
+			// title opened: "Mr D. Price" and "Mr S.K. Martens" both name the
+			// surname after the initials (decision 91).
+			spotCarry = spotCarry || (titles[prevw] && (between == "" || between == "."))
 			hitPrev = false
 			continue
 		}
@@ -322,11 +332,6 @@ func (f *Finder) addLine(line, prevLine string) {
 		before := line[:a]
 		initial := sentenceEnd(before, lead, a)
 		cpt := IsCapitalised(w)
-		prevw, between := "", ""
-		if i > 0 {
-			prevw = strings.ToLower(line[toks[i-1][0]:toks[i-1][1]])
-			between = strings.TrimSpace(line[toks[i-1][1]:a])
-		}
 		hit := false
 		if IsUncased(w) {
 			f.add(w, Uncased, line, a, b, counted)
@@ -338,10 +343,20 @@ func (f *Finder) addLine(line, prevLine string) {
 			f.add(w, KnownName, line, a, b, counted)
 			hit = true
 		}
+		if titles[lw] {
+			// A title or rank names nobody. Masking "Mr" protects nothing and it
+			// was 1,342 of 13,124 false flags on legal prose (decision 91).
+			spotCarry = false
+			hitPrev = false
+			hitAt[i] = false
+			continue
+		}
 		if cpt && !noise[lw] && (!calendar[k] || (prevw != "from" && prevw != "by" && prevw != "with" && prevw != "per")) {
-			spot := (greet[prevw] && (between == "" || between == ",")) ||
+			spot := spotCarry ||
+				(greet[prevw] && (between == "" || between == ",")) ||
 				(titles[prevw] && (between == "" || between == ".")) ||
 				(nameIntr.MatchString(before) && (!calendar[k] || !weakIntr.MatchString(before)))
+			spotCarry = false
 			if spot {
 				f.add(w, NameSpot, line, a, b, counted)
 				hit = true

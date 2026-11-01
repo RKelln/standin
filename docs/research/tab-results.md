@@ -265,3 +265,32 @@ Two corrections to the interpretation above, neither changing a number:
   where the word check masked one token and the model masked the span — which is why
   whole-mention coverage moves 95.5% → 99.1% under the union while mention recall moves 96.8% →
   99.2%. Read the `full` column, not just `recall`.
+
+## After decision 91: title + initials, and titles as noise
+
+The 64 misses were not a hard class. 43 of them were `title + initial + surname` (`Mr D. Price`,
+`Mrs E. Palm`, `Mr S.K. Martens`), four were `rank + surname` (`Sergeant Gamble`), six were bare
+word-names (`Beet`, and the court's own `AM` anonymisation), and eleven were the role `juror`, which
+is a QUASI annotation on a role rather than a name. The first two groups were a bug: the title opened
+a name spot on the *initial*, the initial was discarded for being one character, and the surname then
+had no signal at all.
+
+With decision 91 in place (the spot survives initials, ranks joined the titles, titles stopped being
+candidates), the same corpus and the same scorer give:
+
+| | before | after |
+|---|---|---|
+| mention recall (DIRECT+QUASI) | 96.8% | **99.1%** |
+| whole-mention masked | 95.5% | **98.2%** |
+| all tokens English words | 55.6% | **88.2%** |
+| single-token mentions | 95.1% | 98.7% |
+| false flags per 1,000 words | 60.2 | **51.7** |
+| false flags excluding calendar words | 40.7 | 32.3 |
+
+Reproduce with `go build -o /tmp/wordreport ./tools/wordreport` and re-running the commands in the
+last section against a fresh `det_tab.json`.
+
+The residual after the fix is 17 mentions: 11 `juror` (a role), 4 `AM` (the court's own
+pseudonymisation, which the annotators treat as identifying), and 2 `Beet`. That is close to the
+floor for a word-level detector: nothing in "the applicant Beet" distinguishes the surname from the
+vegetable except the syntax around it.

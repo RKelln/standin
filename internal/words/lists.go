@@ -193,7 +193,14 @@ func init() {
 		merci allo allô cc with per by called told met asked emailed texted`) {
 		greet[w] = true
 	}
-	for _, w := range strings.Fields(`mr mrs ms mx dr mme mlle m prof`) {
+	// Titles and ranks: a title opens a name spot ("Mr Price") and is never
+	// itself a candidate. Ranks are here because "Sergeant Gamble" and
+	// "Flight Lieutenant Winks" are how the police and services are named in
+	// records (decision 91). Ambiguous words are left out on purpose: "Major"
+	// and "Chief" are as often ordinary ("a major issue", "Chief Roadworks").
+	for _, w := range strings.Fields(`mr mrs ms mx dr mme mlle m prof
+		lord lady sir dame judge justice lieutenant sergeant constable inspector
+		superintendent captain colonel corporal admiral advocate`) {
 		titles[w] = true
 	}
 }

@@ -99,6 +99,18 @@ func TestFinderRules(t *testing.T) {
 		{"You said Thursday. It's Friday. Is it done?", "Friday", Calendar, GroupCalendar},
 		{"We open in April and May.", "May", Calendar, GroupCalendar},
 		{"Hi May, see you soon.", "May", NameSpot | Calendar, GroupNameLike},
+		// Decision 91: a title's name spot survives initials, and a title or
+		// rank is never itself a candidate.
+		{"the applicant Mr D. Price, Solicitor.", "Price", NameSpot, GroupNameLike},
+		{"Mr S.K. Martens and Mrs E. Palm, judges.", "Martens", NameSpot, GroupNameLike},
+		{"Mr S.K. Martens and Mrs E. Palm, judges.", "Palm", NameSpot, GroupNameLike},
+		{"Sergeant Gamble and four other officers.", "Gamble", NameSpot, GroupNameLike},
+		{"Flight Lieutenant Winks gave evidence.", "Winks", NameSpot, GroupNameLike},
+		{"The applicant was represented by Mr I. Thrilling.", "Thrilling", NameSpot, GroupNameLike},
+		{"I spoke to Mr Brown about it.", "Brown", NameSpot, GroupNameLike},
+		{"the applicant Mr D. Price, Solicitor.", "Mr", 0, ""},
+		{"Mr D. Price, Solicitor.", "Solicitor", 0, ""},
+		{"Mr", "Mr", 0, ""},
 	}
 	for _, c := range cases {
 		f := find(c.text)

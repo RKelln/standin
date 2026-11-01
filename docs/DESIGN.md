@@ -683,3 +683,22 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     there by the known-values pass. Measured on the evaluation's hard set: the shipped check moved from
     77% to 79% of name instances with no new false flags
     (`docs/research/model-based-detection-eval.md`).
+
+### From the real-prose measurement (2026-10-31)
+
+91. **A title's name spot survives the initials; a title is never a candidate.** "Mr D. Price" and
+    "Mr S.K. Martens" named nobody, for a mechanical reason: the spot fired on the initial ("D"), the
+    initial was dropped for being one character, and `hitPrev` reset, so the surname got neither the
+    spot nor `NextToName`. A carry flag now holds the spot across initials until a word that can be a
+    name arrives. Ranks joined the title list (`lieutenant`, `sergeant`, `captain`, `constable`,
+    `inspector`, `judge`, `justice` ...) because "Sergeant Gamble" and "Flight Lieutenant Winks" are
+    how police and services are named in records; ambiguous words are left out on purpose — "Major"
+    and "Chief" are as often ordinary ("a major issue", "Chief Roadworks"). Titles and ranks also
+    stopped being candidates: masking "Mr" protects nobody, and before this change they were 1,342 of
+    13,124 false flags on legal prose. Measured on 254 real judgments (TAB, 1,988 mentions that need
+    masking): mention recall **96.8% → 99.1%**, whole-mention masking 95.5% → 98.2%, the class where
+    every token is an English word **55.6% → 88.2%**, and false flags **60.2 → 51.7 per 1,000 words**.
+    The shop fixtures do not move (79% / 88%), because "Mr D. Price" is not how a bike shop writes.
+    Cost: a rank word in a non-name context now puts the next capitalised word in the name-like group
+    ("Inspector Roadworks"); the person rules on it at approve, as with every other candidate.
+    (`docs/research/tab-results.md` has the before-and-after tables.)
