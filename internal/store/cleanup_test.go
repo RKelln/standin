@@ -50,10 +50,22 @@ func TestRecordErrorReportsLeaseReleaseFailure(t *testing.T) {
 func TestRollbackCleanupFailureKeepsPendingMarker(t *testing.T) {
 	dir := canonicalTempDir(t)
 	file := filepath.Join(dir, MappingFile)
+	blocked := filepath.Join(dir, "blocked.txt")
 	if err := os.WriteFile(file, []byte("old invented mapping"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	beforePublish = func(int) {
+	beforePublish = func(i int) {
+		if i != 1 {
+			return
+		}
+		// A nonempty destination directory refuses the rename on Windows too;
+		// Windows can otherwise rename a source directory over an existing file.
+		if err := os.Mkdir(blocked, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(blocked, "held"), []byte("invented"), 0600); err != nil {
+			t.Fatal(err)
+		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatal(err)
@@ -76,7 +88,10 @@ func TestRollbackCleanupFailureKeepsPendingMarker(t *testing.T) {
 		t.Fatal("staged output was not present")
 	}
 	t.Cleanup(func() { beforePublish = nil })
-	err := WriteAll([]Out{{Path: file, Data: []byte("new invented mapping"), Perm: 0600, Root: dir}})
+	err := WriteAll([]Out{
+		{Path: file, Data: []byte("new invented mapping"), Perm: 0600, Root: dir},
+		{Path: blocked, Data: []byte("invented second output"), Perm: 0600, Root: dir},
+	})
 	if err == nil || fail.Code(err) != "write-rollback" || strings.Contains(err.Error(), dir) || strings.Contains(err.Error(), "invented mapping") {
 		t.Fatalf("cleanup failure needs safe recovery guidance: %v", err)
 	}

@@ -657,3 +657,10 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     now name a fixed failing step and numeric Windows code, never a private path; the output writer
     preserves that safe guidance. Cross-builds and vet do not establish native runtime success:
     Windows CI must confirm the fix before release.
+89. **Native tests must trigger the same failure on each platform.** The rollback-cleanup test now
+    uses a nonempty destination directory to force publication failure, then checks restoration of
+    an earlier output, retained pending state and safe recovery guidance. Windows can rename the
+    substituted source directory over a file, so the old injection could succeed. Setup tests also
+    check the existing filename fallback on Windows rather than requiring Unix absolute deny rules.
+    Windows absolute-path rules in Claude Code remain unverified and are omitted; the runtime hooks
+    still check private-folder paths. This limitation is now explicit in the README.

@@ -129,6 +129,8 @@ the rest of it alone.
 - The hooks find the project folder themselves, so a moved folder keeps working. The mapping is kept
   by the folder's full path, so after a move Standin tells you where the old private folder is and
   where to move it. It does not move it for you.
+- On Windows, setup adds filename deny rules for private files, but skips absolute private-folder
+  rules because their Claude Code syntax is unverified. The hooks still check private-folder paths.
 
 ## What it misses
 

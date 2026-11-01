@@ -5,6 +5,7 @@ package initcmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -50,10 +51,23 @@ func TestInitBackupAndTeammateNote(t *testing.T) {
 	if !strings.Contains(r.out, "each must run standin init") {
 		t.Errorf("no note for teammates:\n%s", r.out)
 	}
-	// The deny rules cover the whole private-folders root.
+	// Unix rules cover the whole private-folders root. Windows uses filename
+	// rules and the hooks until Claude Code's absolute-path syntax is verified.
 	home := os.Getenv("STANDIN_HOME")
 	local := readJSON(t, filepath.Join(p, ".claude", "settings.local.json"))
 	deny := local["permissions"].(map[string]any)["deny"].([]any)
+	if runtime.GOOS == "windows" {
+		for _, want := range []string{"Read(**/mapping.json)", "Edit(**/mapping.json)", "Read(**/words.json)", "Edit(**/words.json)", "Read(**/.standin-previous-*)", "Edit(**/.standin-previous-*)"} {
+			found := false
+			for _, d := range deny {
+				found = found || d == want
+			}
+			if !found {
+				t.Errorf("no deny rule %s: %v", want, deny)
+			}
+		}
+		return
+	}
 	found := false
 	for _, d := range deny {
 		if d == "Read(/"+filepath.ToSlash(home)+"/**)" {
