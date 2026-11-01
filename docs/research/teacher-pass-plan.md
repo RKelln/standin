@@ -40,22 +40,57 @@ minutes: **LitBank** (public-domain fiction, CC BY 4.0 annotations — where nam
 words are densest), **UNER-English** (CC BY-SA, real email/reviews/newsgroups, includes lower-case
 person annotations like `hi mark -`), **WikiGold** (small, CC BY 4.0, a precision sanity check).
 
-### The licence board (verified 2026-10-31)
+### The licence board (verified 2026-10-31, corrected the same day)
 
-| source | can we measure? | can we commit a sample to an MIT repo? | note |
+The first version of this table asked one question — "can we use it?" — and answered it with
+"no" wherever a non-commercial clause appeared. That was wrong, and the correction matters more than
+the table: **using a corpus and redistributing it are different acts with different tests.**
+
+- **Use** (load it on this machine, measure, publish the resulting number) is what a licence governs
+  for *us*. Facts are not copyrightable; a recall figure computed over an NC corpus is ours to state.
+- **Redistribution** (commit a sample into the repo, ship a fixture, put text in a test file) is what
+  an MIT repo needs permission for, and the permission is judged by who receives it — **including
+  the small business that clones Standin and is, by design, commercial.**
+
+That last clause is the whole trap. Standin not being commercial does not help, because the repo is
+handed to people who are. A sample committed under an NC licence turns every commercial user of
+Standin into an infringer through no act of their own. So the commit column stays narrow even though
+the measure column widens a lot.
+
+| source | measure here | commit a sample to an MIT repo | which clause decides it |
 |---|---|---|---|
-| TAB | yes | **yes** (MIT) | the only labelled real-text set that is permissive |
-| LitBank | yes | **yes** (CC BY 4.0; texts are public domain) | best density of word-names |
-| Enron | yes | **no** (no licence grant) | internal use only |
-| UNER-English | yes | no (CC BY-**SA**) | share-alike contaminates an MIT repo |
-| CUAD | yes | yes (CC BY 4.0 on Zenodo) | contracts; names sparse, good for false positives |
-| RAT-Bench | yes | yes (MIT) | synthetic; the only re-identification benchmark |
-| ai4privacy | no | **no** — "Commercial entities should contact licensing@ai4privacy.com" | research-only trap |
-| Canadian Hansard, Quebec AN | yes | **no** — commercial use barred | also requires "accurate reproduction" |
-| OGL-Canada (federal open data) | — | **no** — the licence "does not grant any right to use: Personal Information" | rules out most federal Canadian data before you start |
-| Quebec enterprise registry | yes | no (NC) *and* names are stripped | "les noms, prénoms et adresses des personnes physiques, sont absents" |
-| CoNLL-2003 / OntoNotes / ACE | yes | **no** — no licence / LDC user agreement | CoNLL's text is Reuters copyright; never commit a sentence |
-| MultiNERD, Few-NERD | yes | no | labels are machine-generated, not gold |
+| TAB (ECHR) | yes | **yes** — MIT | — |
+| LitBank | yes | **yes** — CC BY 4.0, texts public domain | — |
+| CUAD | yes | **yes** — CC BY 4.0 (Zenodo) | — |
+| WikiGold | yes | **yes** — CC BY 4.0 | — |
+| Enron | yes | **no** | no grant at all, plus CMU's privacy ask |
+| ai4privacy | **yes**, as a non-commercial researcher | no | NC ("commercial entities should contact…") |
+| Canadian Hansard, Quebec AN | yes | **no** | two clauses: NC **and** "accurate reproduction" |
+| OPP-115, CEPT | yes, research use | no | NC |
+| CFPB narratives | unavailable anyway | no | withdrawn from publication |
+| UNER-English | yes | no | CC BY-**SA**: share-alike would pull the repo's licence |
+| Quebec enterprise registry | no | no | NC *and* the names are stripped |
+| OGL-Canada (federal) | murky | no | not an NC clause: the licence "does not grant any right to use: Personal Information", so it is silent, not permissive |
+| CoNLL-2003 | yes, with care | **never** | no licence at all; the text is Reuters copyright |
+| OntoNotes, ACE | only with an LDC agreement | no | access barrier, then user agreement |
+| MultiNERD, Few-NERD | yes | no | machine-generated labels, not gold |
+
+**Clause types, because they behave differently:**
+
+- **NC** (non-commercial) — bites on selling and on redistribution, not on a person measuring at home.
+  Ryan's reading is right for this one.
+- **ND / "accurate reproduction"** — bites on *transformation*, money or not. Anonymising a judgment is
+  a transformation, so Hansard and Quebec debates stay out of any derived artefact regardless of who
+  we are.
+- **Carve-out** ("does not cover personal data") — grants nothing rather than forbidding something;
+  whether a research exception covers it is a jurisdiction question, not a reading of the licence. I
+  would not build a habit on it.
+- **Share-alike** — infects the repository's licence, so it fails an "MIT and nothing else" test.
+- **Research-only / DUA** — a purpose restriction plus, usually, an agreement to sign.
+
+**The test to apply before committing anything:** could a small business that clones this repo still
+say, honestly, "everything here is MIT except the listed third-party files, and those are permissive
+too"? If not, the text does not go in the repo, however we came by it.
 
 **No public corpus of French-Canadian business correspondence exists** under a usable licence, and
 none of the Canadian sources that do have real names can be committed. The French story therefore
