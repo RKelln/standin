@@ -43,6 +43,19 @@ tokenizers split a name into pieces, and an unmerged span neither counts as a hi
 `score2.py` expects the merged files (`*_m.json`). `int8` (the 28.7 MB quantized ONNX) is the artifact
 that matters for shipping; the others are for comparison.
 
+## Pure-Go inference
+
+`go-probe/` is a separate module (so `go build ./...` in the repo never sees hugot) that runs the
+same corpus through `hugot`'s GoMLX backend and writes the same JSON, for the latency and memory
+numbers in the report:
+
+```sh
+cd go-probe && go mod tidy
+go run . -corpus ../corpus_hard.json -model /path/to/bert-small-dir -out go.json
+```
+
+The model directory needs `model.onnx` (fp32, 114 MB), `tokenizer.json` and `config.json`.
+
 ## Score
 
 ```sh

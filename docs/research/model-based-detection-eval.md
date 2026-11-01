@@ -237,15 +237,24 @@ GoMLX-backed pure-Go backend, `tokenClassification` supported) or `onnx-gomlx` d
   module", though the *reason* for that decision ("nothing unvetted enters") could survive a
   deliberate exception.
 
-**(b) Model inside the binary, hand-written forward pass** — the `goformer` precedent (pure-Go BERT
-inference, no cgo, no ONNX). bert-small is small enough to be tractable: 4 layers, 512 hidden.
-- Work: ~1–1.5k lines (BERT forward + WordPiece tokenizer + safetensors/ONNX weight loader).
-- Speed: I measured **4.6–8.7 GFLOPS** for a 512³ float32 matmul in plain Go on this box (two runs,
-  idle vs loaded). A 50-token bert-small forward is ~2.8 GFLOP → **~0.3–0.6 s/line**, against
-  0.6–1.2 ms in ONNX Runtime. A 2,000-line inbox goes from ~2 s to 10–20 minutes. With SIMD kernels
-  (gonum-class assembly) expect 3–5× better; still two orders of magnitude behind ORT.
-- This is the honest reason the "just embed it" instinct fails: **the model is small; the arithmetic
-  is not.**
+**(b) Model inside the binary, pure-Go inference** — no cgo, no native library, static binary.
+- **It works today.** `hugot v0.8.5` (its GoMLX backend) loaded the bert-small ONNX as a
+  token-classification pipeline and reproduced the ONNX Runtime predictions exactly: 33/39 on the
+  hard set, 90/93 on the repo fixtures (ORT int8: 33/39, 92/93 — a decode difference, not a model
+  one). No cgo, `CGO_ENABLED=0`, statically linked **16.9 MB stripped** binary.
+- Cost: **19 ms/line** median on this box, with **114 ms** when an input of a new token length
+  compiles a graph, against 0.6 ms under ORT int8. **377 MB resident after load, 1.09 GB at
+  plateau** under varied input (measured flat between call 20 and call 120 — a high-water mark, not
+  a leak).
+- Blocker for the small artifact: the int8 graph uses `DynamicQuantizeLinear` / `MatMulInteger`,
+  which the ONNX importer does not take, so this route needs the **114 MB fp32** model, not the
+  29 MB one. On load it prints a warning that dynamic axes failed and retries with concrete shapes;
+  it works, but shapes are fixed per compile, which is where the 114 ms spikes come from.
+- Dependency cost: **85 modules, 26 MB vendored**, versus one today (decision 73).
+- An earlier estimate in this report said a hand-written forward pass would run at 0.3–0.6 s/line
+  from a measured 4.6–8.7 GFLOPS scalar matmul. That was **pessimistic by about 20×**: a compiled
+  graph over batched tensors is not a scalar matmul loop. The measurement above replaces it, and it
+  is also why "write the forward pass by hand" is not worth its ~1.5k lines when hugot exists.
 
 **(c) Second binary / sidecar with a native library** — ONNX Runtime via cgo, or `onnxer`-style
 purego FFI with a per-platform `libonnxruntime` shipped alongside.
@@ -310,8 +319,9 @@ weights' licence. Never a replacement for the column rules, and never a source o
 
 ## 9. What would change this verdict
 
-- A pure-Go ONNX path that runs *this* int8 graph on all four platforms at ≤5 ms/line. (Then the
-  quality argument wins immediately; Move 3 becomes a wiring job.)
+- A pure-Go path at ≤5 ms/line and ≤300 MB resident, on all four platforms. (Today's is 19 ms and
+  1.09 GB; at that point Move 3 becomes a wiring job.) Or int8 support in a Go ONNX importer, which
+  would cut the model from 114 MB to 29 MB.
 - Evidence that Standin's real users' text is dominated by non-English or non-Latin scripts, where
   every model tested collapses and the deterministic refusals are the correct behaviour.
 - A measured corpus showing the word-check misses are cheap to fix by rule (Move 2) — then the model
@@ -328,7 +338,8 @@ weights' licence. Never a replacement for the column rules, and never a source o
 must live inside the module to import `internal/words`):
 `python run_model.py <model> corpus_<set>.json out.json`, `python run_onnx.py` for the int8 path,
 `python merge_spans.py` then `python score2.py` for the table. Scalar-Go matmul benchmark:
-`go run gobench.go`.
+`go run gobench.go`. Pure-Go inference measurement: `go-probe/` (a nested module, so the standin
+build never sees hugot) — `go mod tidy && go run . -corpus ../corpus_hard.json -model <dir> -out go.json`.
 
 **Model facts** verified at the Hugging Face API on 2026-10-31 (parameter counts, weight sizes,
 licences, context, download counts).
