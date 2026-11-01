@@ -37,6 +37,13 @@ func TestPatterns(t *testing.T) {
 		{"at 45 Queen St W", "street address=45 Queen St W"},
 		{"nothing here, 2026-01-05, 1399.70", ""},
 		{"[PERSON_12345678] is a stand-in", ""},
+		{"dm @grace_lee about the bike", "username=@grace_lee"},
+		{"reply to @jdoe, thanks", "username=@jdoe"},
+		{"ask @ana.vantreeck now", "username=@ana.vantreeck"},
+		{"user@host is not a handle", ""},
+		{"@media (max-width: 600px)", ""},
+		{"@import url(x.css)", ""},
+		{"call me on @123", ""},
 	}
 	for _, c := range cases {
 		got := kinds(c.in)
@@ -102,6 +109,17 @@ func TestReplacePatternsAddStandins(t *testing.T) {
 	out, n := Replace("Mail fake.person@example.com or call 416-555-0199.", NewKnown(m), m)
 	if out != "Mail [EMAIL_1] or call [PHONE_1]." || n != 2 {
 		t.Fatalf("got %q %d", out, n)
+	}
+}
+
+func TestReplaceHandle(t *testing.T) {
+	m := mapping.New()
+	out, n := Replace("dm @grace_lee and @jdoe about it", NewKnown(m), m)
+	if out != "dm [USERNAME_1] and [USERNAME_2] about it" || n != 2 {
+		t.Fatalf("got %q %d", out, n)
+	}
+	if e, ok := m.FindValue("@grace_lee"); !ok || e.Standin != "[USERNAME_1]" {
+		t.Fatalf("mapping does not restore the handle: %+v %v", e, ok)
 	}
 }
 

@@ -82,8 +82,9 @@ fill it in by hand where you need it.
   **columns**. They follow the same rules as CSV columns.
 - The rest gets the **word check**: Standin picks out words that may be private (a *candidate* is
   such a word): words that are not English words, words after Hi, Dear or Thanks, sign-offs, first
-  names, emails, phone numbers and values it already knows. Each one becomes a stand-in like
-  `[NAME_1]`, unless you keep it. Other words stay. Markdown marks stay as they are.
+  names, emails, phone numbers, `@handles` (usernames, like `@grace_lee`) and values it already
+  knows. Each one becomes a stand-in like `[NAME_1]` or `[USERNAME_1]`, unless you keep it. Other
+  words stay. Markdown marks stay as they are.
 - The AI never sees a candidate word. The shape file and `standin review` give counts only.
 - `standin approve` shows you the new words on your screen, 20 at a time, each with a short piece of
   the text: first the unusual words (brands, streets, short forms: most words worth keeping are
@@ -139,9 +140,10 @@ the rest of it alone.
   share them.
 - **The word check on `.md` and `.txt` misses:** a name that is also a common word, typed in lower
   case (rich, grace, will) or only at the start of a sentence ("Rose called"); a surname that is a
-  word, with no first name or title next to it; business names made of words (City Hardware); names
-  inside links and handles (`@grace_lee`, `/people/ana-vantreeck`) unless Standin already swapped that
-  name elsewhere; and a person told apart by a story or a rare detail. For
+  word, with no first name or title next to it; business names made of words (City Hardware); a name
+  inside a plain link or a web path (`/people/ana-vantreeck`), unless Standin already swapped that
+  name elsewhere; and a person told apart by a story or a rare detail. `@handles` are caught whole,
+  like an email. For
   case notes and other text about people's lives, `drop` the text. The built-in word list is English:
   a French message has most of its words offered as candidates, so expect to keep a lot, or `drop` the
   text. Tested on invented text only.

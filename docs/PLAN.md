@@ -124,7 +124,7 @@ has a word check. A config with no `keep`, no `scan` and no word check needs no 
 
 - Format `[CATEGORY_N]`: `CATEGORY` is `[A-Z]+`, `N` starts at 1 per category. Regex
   `\[[A-Z]+_[1-9][0-9]*\]`. Brackets make `[PERSON_1]` and `[PERSON_12]` unambiguous.
-- Categories: `PERSON ORG EMAIL PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE NAME` (unknown category in
+- Categories: `PERSON ORG EMAIL USERNAME PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE NAME` (unknown category in
   config: refuse). Unmentioned columns use `VALUE`. `NAME` (v0.2) is a word the word check swapped.
 - Key: category + normalised value (lowercase, trim, collapse inner whitespace, strip trailing `.,;:`).
   The same normalised value always gets the same stand-in, across all files in a project.

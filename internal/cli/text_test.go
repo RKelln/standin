@@ -328,3 +328,25 @@ func TestKeepGroupsAtTopLevelSaysWhere(t *testing.T) {
 		t.Errorf("want a hint: %+v", r)
 	}
 }
+
+// A handle is a username, claimed whole like an email (DESIGN decision 90).
+func TestHandleBecomesUsername(t *testing.T) {
+	p := newTP(t)
+	p.write("raw/a.md", "Reached her on @grace_lee today.\n")
+	p.write("standin.config.json", `{"version":1,"files":[{"match":"raw/*.md","text":{"action":"words"}}]}`)
+	if r := p.run("", false, "shape"); r.code != 0 {
+		t.Fatalf("shape: %+v", r)
+	}
+	if sh := p.read("shape/a.md.shape.md"); !strings.Contains(sh, "Looks like username") {
+		t.Errorf("the shape file does not count the handle:\n%s", sh)
+	}
+	if r := p.run("yes\nyes\nyes\n", true, "approve"); r.code != 0 {
+		t.Fatalf("approve: %+v", r)
+	}
+	if r := p.run("", false, "scrub"); r.code != 0 {
+		t.Fatalf("scrub: %+v", r)
+	}
+	if got := p.read("scrubbed/a.md"); got != "Reached her on [USERNAME_1] today.\n" {
+		t.Errorf("got %q", got)
+	}
+}

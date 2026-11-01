@@ -8,10 +8,12 @@ import (
 
 const (
 	kindEmail         = "email"
+	kindHandle        = "username"
 	kindName          = "name"
 	kindStreetAddress = "street address"
 
 	categoryEmail   = "EMAIL"
+	categoryUser    = "USERNAME"
 	categoryPhone   = "PHONE"
 	categoryAccount = "ACCOUNT"
 	categoryID      = "ID"

@@ -409,7 +409,7 @@ const ConfigHelp = "## How to write the config\n\n" +
 	"- `keep`: leave the real values as they are. Use it only when the work needs the real value and it is not private (amounts, dates, status words). A person must approve every keep and every scan.\n" +
 	"- `drop`: blank the value. Use it for things the work does not need. It may have a `category`; Standin still swaps that value where it shows up in scan text.\n" +
 	"- `scan`: free text. Standin swaps known values and patterns (emails, phone numbers, long numbers, postal codes) and leaves the rest. Names it does not know stay in, so a person must approve it too.\n\n" +
-	"Categories: `PERSON ORG EMAIL PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE NAME`.\n" +
+	"Categories: `PERSON ORG EMAIL USERNAME PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE NAME`.\n" +
 	"A column the config does not name is tokenized as `VALUE`. A free-text column it does not name is dropped.\n" +
 	"Give each choice a short `reason`. Use the column names above (for a hidden header, use `[COLUMN_n]`; it can only be `tokenize` or `drop`).\n" +
 	"For JSON, nested names use dots (`address.city`) and lists use `[]` (`items[].name`).\n\n" +

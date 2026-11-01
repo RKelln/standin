@@ -664,3 +664,22 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     check the existing filename fallback on Windows rather than requiring Unix absolute deny rules.
     Windows absolute-path rules in Claude Code remain unverified and are omitted; the runtime hooks
     still check private-folder paths. This limitation is now explicit in the README.
+
+### From the model evaluation (2026-10-31)
+
+90. **A handle is a username, claimed whole like an email.** `@grace_lee` becomes `[USERNAME_1]`, a new
+    category added to `mapping.Categories` and to the two shape prompts. Why: the word check cannot see
+    one. "grace" and "lee" are English words, and decision 43 leaves a word after `@` alone on purpose,
+    so an address local part and `price-sheet.md` are not split into fragments. A pattern now claims
+    the run `@[A-Za-z0-9_][A-Za-z0-9_.-]{1,29}[A-Za-z0-9_]` whole, which makes the stand-in one value
+    that restores exactly, and shape counts it as "username". Guards: the `@` must follow a non-word
+    character (so `user@host` is not a handle), the run must hold a letter (so `@123` is a number), and
+    a closed list of CSS at-rules and decorator words (`media`, `import`, `keyframes`, `apply` ...) is
+    refused, because a pasted style sheet is the one place `@word` appears in prose. Cost: a handle is
+    masked as a unit, so the AI sees `[USERNAME_1]` where the text had a username: the same trade as an
+    email. **Miss kept:** a plain path (`/people/ana-vantreeck`) is not a pattern. A path segment gives
+    no signal that it is a person, and "the word after `/` that is not an English word" flags every
+    filesystem path in a note (`/usr/local/bin`). A name that repeats a known value is still swapped
+    there by the known-values pass. Measured on the evaluation's hard set: the shipped check moved from
+    77% to 79% of name instances with no new false flags
+    (`docs/research/model-based-detection-eval.md`).

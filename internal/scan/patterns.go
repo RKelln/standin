@@ -74,12 +74,38 @@ var streetWords = "street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln|
 // Email is used on its own by the shape checks.
 var emailRe = regexp.MustCompile(`[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
 
+// A handle is a username typed with an @, such as @grace_lee or @jdoe. The word
+// check cannot see one: "grace" and "lee" are English words, and a word after
+// "@" is left alone on purpose. So a handle is claimed whole, like an email.
+var handleRe = regexp.MustCompile(`@[A-Za-z0-9_][A-Za-z0-9_.-]{1,29}[A-Za-z0-9_]`)
+
+// atWords are the words after an @ that are not handles: CSS at-rules and
+// decorator keywords. This is a closed vocabulary from a specification, not a
+// list of people, so it cannot grow, and it keeps a pasted style sheet from
+// turning into usernames.
+var atWords = map[string]bool{
+	"media": true, "import": true, "keyframes": true, "font-face": true, "supports": true,
+	"layer": true, "container": true, "charset": true, "page": true, "property": true,
+	"scope": true, "apply": true, "override": true, "deprecated": true, "suppress": true,
+	"namespace": true, "starting-style": true, "tailwind": true,
+}
+
 var phoneNA = regexp.MustCompile(`(?:\+?1[ .-]?)?\(?[2-9]\d{2}\)?[ .-]?\d{3}[ .-]?\d{4}`)
 var phoneIntl = regexp.MustCompile(`\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,5}`)
 
 // Patterns, in the order they claim text. An earlier pattern wins an overlap.
 var Patterns = []*Pattern{
 	{Kind: kindEmail, Category: categoryEmail, re: emailRe},
+	{Kind: kindHandle, Category: categoryUser, re: handleRe,
+		before: isWordPlus,
+		check: func(m string) bool {
+			// A handle holds at least one letter ("@123" is a number), and is
+			// not a CSS at-rule or a decorator keyword.
+			if atWords[strings.ToLower(m[1:])] {
+				return false
+			}
+			return strings.IndexFunc(m, unicode.IsLetter) >= 0
+		}},
 	{Kind: "card number", Category: categoryAccount,
 		re:     regexp.MustCompile(`\d(?:[ -]?\d){12,18}`),
 		before: isDigitDash, after: isDigit,

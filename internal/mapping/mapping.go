@@ -28,7 +28,7 @@ const CategoryName = "NAME"
 
 // Categories are the stand-in categories Standin knows.
 // NAME is a word from free text (a .md or .txt file) that the word check swapped.
-var Categories = []string{"PERSON", "ORG", "EMAIL", "PHONE", "ACCOUNT", "ID", "ADDRESS", "POSTAL", "KEY", "VALUE", CategoryName}
+var Categories = []string{"PERSON", "ORG", "EMAIL", "USERNAME", "PHONE", "ACCOUNT", "ID", "ADDRESS", "POSTAL", "KEY", "VALUE", CategoryName}
 
 // ValidCategory reports whether c is a known category.
 func ValidCategory(c string) bool {

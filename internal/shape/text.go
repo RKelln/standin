@@ -143,7 +143,7 @@ const TextConfigHelp = "## How to write the config for a text file\n\n" +
 	"Other words stay, so a name that is also a common word may get through. `{\"action\": \"drop\"}` blanks the text. With no `text` rule, the text is dropped.\n" +
 	"- `keep_groups` (only with `words`): `[\"calendar\"]` keeps day and month names; it is already the default, so leave the line out. `[]` turns it off. It is the only group. You cannot name words to keep: you never see them.\n\n" +
 	"A person must approve every keep, every scan and every word check. For case notes or other text about people's lives, `drop` is the safer choice.\n" +
-	"Categories: `PERSON ORG EMAIL PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE NAME`. Give each choice a short `reason`.\n\n" +
+	"Categories: `PERSON ORG EMAIL USERNAME PHONE ACCOUNT ID ADDRESS POSTAL KEY VALUE NAME`. Give each choice a short `reason`.\n\n" +
 	"```json\n" +
 	"{\n" +
 	"  \"version\": 1,\n" +
