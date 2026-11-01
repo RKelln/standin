@@ -20,13 +20,23 @@ func TestWindowsPrivateACLBeforeWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	t.Cleanup(func() {
+		if err := r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	f, name, err := rootTemp(r, ".", 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	defer r.Remove(name)
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := r.Remove(name); err != nil {
+			t.Error(err)
+		}
+	})
 	info, err := f.Stat()
 	if err != nil || info.Size() != 0 {
 		t.Fatal("private temp must still be empty")
@@ -49,7 +59,7 @@ func assertUserOnlyACL(t *testing.T, path string) {
 	if code != 0 || descriptor == 0 {
 		t.Fatal("could not read private ACL")
 	}
-	defer syscall.LocalFree(syscall.Handle(descriptor))
+	defer func() { _, _ = syscall.LocalFree(syscall.Handle(descriptor)) }() // Only frees the native descriptor buffer.
 	var control uint16
 	var revision uint32
 	getControl := advapi.NewProc("GetSecurityDescriptorControl")
@@ -57,30 +67,34 @@ func assertUserOnlyACL(t *testing.T, path string) {
 	if ok == 0 || control&0x1000 == 0 {
 		t.Fatal("private ACL still inherits other users' access")
 	}
-	dacl, err := descriptorDACL(descriptor)
-	if err != nil {
-		t.Fatal(err)
+	// Receive native addresses as pointers. Keeping them in uintptr variables
+	// and converting back later loses the pointer provenance required by vet.
+	var dacl unsafe.Pointer
+	var present, defaulted uint32
+	ok, _, _ = getDescriptorDACL.Call(descriptor, uintptr(unsafe.Pointer(&present)), uintptr(unsafe.Pointer(&dacl)), uintptr(unsafe.Pointer(&defaulted)))
+	if ok == 0 || present == 0 || dacl == nil {
+		t.Fatal("private ACL has no access list")
 	}
 	type aclHeader struct {
 		Revision, Reserved     byte
 		Size, Count, Reserved2 uint16
 	}
-	if (*aclHeader)(unsafe.Pointer(dacl)).Count != 1 {
+	if (*aclHeader)(dacl).Count != 1 {
 		t.Fatal("private ACL grants more than one account")
 	}
-	var ace uintptr
+	var ace unsafe.Pointer
 	getAce := advapi.NewProc("GetAce")
-	ok, _, _ = getAce.Call(dacl, 0, uintptr(unsafe.Pointer(&ace)))
-	if ok == 0 || ace == 0 {
+	ok, _, _ = getAce.Call(uintptr(dacl), 0, uintptr(unsafe.Pointer(&ace)))
+	if ok == 0 || ace == nil {
 		t.Fatal("private ACL has no user grant")
 	}
-	if *(*byte)(unsafe.Pointer(ace)) != 0 {
+	if *(*byte)(ace) != 0 {
 		t.Fatal("private ACL is not a user allow entry")
 	}
-	if *(*uint32)(unsafe.Pointer(ace + 4)) != 0x001f01ff {
+	if *(*uint32)(unsafe.Add(ace, 4)) != 0x001f01ff {
 		t.Fatal("private ACL does not grant full file access")
 	}
-	actual, err := (*syscall.SID)(unsafe.Pointer(ace + 8)).String()
+	actual, err := (*syscall.SID)(unsafe.Add(ace, 8)).String()
 	if err != nil {
 		t.Fatal("could not read private ACL user")
 	}
@@ -88,7 +102,7 @@ func assertUserOnlyACL(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer token.Close()
+	defer func() { _ = token.Close() }() // Query-only handle; no access-list changes are buffered.
 	user, err := token.GetTokenUser()
 	if err != nil {
 		t.Fatal(err)

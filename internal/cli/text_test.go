@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -101,7 +102,7 @@ func TestTextFlow(t *testing.T) {
 	}
 	wj := filepath.Join(p.privDir(), "words.json")
 	st, err := os.Stat(wj)
-	if err != nil || st.Mode().Perm() != 0o600 {
+	if err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o600) {
 		t.Fatalf("words.json must exist with mode 0600: %v %v", err, st)
 	}
 	wb, _ := os.ReadFile(wj)

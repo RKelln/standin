@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -80,7 +81,8 @@ func snapshot(t *testing.T, dir string) map[string]string {
 func TestInitFreshAndIdempotent(t *testing.T) {
 	fakeClaude(t, "2.1.300 (Claude Code)", true, nil)
 	p := newProject(t)
-	r := runInit(t, "--project", p, "--bin", "/opt/standin/standin", "--harness", "claude,codex,opencode")
+	bin := filepath.Join(t.TempDir(), "standin")
+	r := runInit(t, "--project", p, "--bin", bin, "--harness", "claude,codex,opencode")
 	if r.code != 0 {
 		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
 	}
@@ -106,7 +108,7 @@ func TestInitFreshAndIdempotent(t *testing.T) {
 			t.Fatalf("%s: %d groups", ev, len(groups))
 		}
 		h := groups[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)
-		if h["onFailure"] != "block" || h["command"] != "/opt/standin/standin" || h["type"] != "command" {
+		if h["onFailure"] != "block" || h["command"] != bin || h["type"] != "command" {
 			t.Errorf("%s hook wrong: %v", ev, h)
 		}
 		args := h["args"].([]any)
@@ -135,7 +137,7 @@ func TestInitFreshAndIdempotent(t *testing.T) {
 	}
 
 	before := snapshot(t, p)
-	r2 := runInit(t, "--project", p, "--bin", "/opt/standin/standin", "--harness", "claude,codex,opencode")
+	r2 := runInit(t, "--project", p, "--bin", bin, "--harness", "claude,codex,opencode")
 	if r2.code != 0 || !strings.Contains(r2.out, "Nothing to change") {
 		t.Fatalf("second run: %d %s %s", r2.code, r2.out, r2.err)
 	}
@@ -153,6 +155,7 @@ func TestInitFreshAndIdempotent(t *testing.T) {
 func TestInitMergesExisting(t *testing.T) {
 	fakeClaude(t, "claude 2.1.295", true, nil)
 	p := newProject(t)
+	bin := filepath.Join(t.TempDir(), "standin")
 	must := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -176,7 +179,7 @@ func TestInitMergesExisting(t *testing.T) {
 	must(os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte("# My rules\n\nBe kind."), 0o644))
 	must(os.WriteFile(filepath.Join(p, "standin.config.json"), []byte(`{"version":1,"files":[{"match":"raw/a.csv","columns":{}}]}`), 0o644))
 
-	r := runInit(t, "--project", p, "--bin", "/new/standin", "--shared")
+	r := runInit(t, "--project", p, "--bin", bin, "--shared")
 	if r.code != 0 {
 		t.Fatalf("code %d: %s", r.code, r.err)
 	}
@@ -212,10 +215,12 @@ func TestInitMergesExisting(t *testing.T) {
 	if pre[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"] != "other-tool" {
 		t.Error("other hook lost or moved")
 	}
-	if pre[1].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"] != "/new/standin" {
+	if pre[1].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"] != bin {
 		t.Error("old standin hook not replaced")
 	}
-	if st, _ := os.Stat(filepath.Join(p, ".claude", "settings.json")); st.Mode().Perm() != 0o600 {
+	if st, err := os.Stat(filepath.Join(p, ".claude", "settings.json")); err != nil {
+		t.Fatal(err)
+	} else if runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
 		t.Errorf("file mode changed to %v", st.Mode().Perm())
 	}
 	ag, _ := os.ReadFile(filepath.Join(p, "AGENTS.md"))
@@ -230,7 +235,7 @@ func TestInitMergesExisting(t *testing.T) {
 	// An edited block is refreshed in place, text around it kept.
 	edited := strings.Replace(string(ag), "Never read", "Maybe read", 1) + "\nAfter.\n"
 	must(os.WriteFile(filepath.Join(p, "AGENTS.md"), []byte(edited), 0o644))
-	if r := runInit(t, "--project", p, "--bin", "/new/standin", "--shared"); r.code != 0 {
+	if r := runInit(t, "--project", p, "--bin", bin, "--shared"); r.code != 0 {
 		t.Fatal(r.err)
 	}
 	ag2, _ := os.ReadFile(filepath.Join(p, "AGENTS.md"))

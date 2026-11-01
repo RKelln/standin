@@ -272,7 +272,9 @@ func checkMode(t *testing.T, path string, want os.FileMode) {
 		t.Errorf("stat %s: %v", path, err)
 		return
 	}
-	if got := st.Mode().Perm(); got != want {
+	// Windows access control is checked by the native store ACL tests; Unix
+	// mode bits do not describe that access. Existence is checked on both.
+	if got := st.Mode().Perm(); runtime.GOOS != "windows" && got != want {
 		t.Errorf("%s: mode %o, want %o", path, got, want)
 	}
 }
