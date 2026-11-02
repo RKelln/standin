@@ -352,3 +352,10 @@ where they differ (unapproved scrub now refuses; hooks take no `--project`; `sho
 |---|---|---|
 | G. Fixes 2-7 | builder agent | DESIGN 32-37, tests, smoke test updated |
 | F. Free text | research agent, then builder | `docs/research/free-text.md` (design, list licences, candidate counts on the Get2Know fixtures), then `.md`/`.txt` support (built; contract in "Free text" above) |
+
+## Column approval in chat (decision 92)
+
+`standin approve-columns CONFIG_SHA256` saves approval for a config without word checks, after the
+agent shows all rules and risks and gets the person's explicit yes in chat. `review` prints the exact
+command and hash. Changed configs require a new review and yes. The command cannot authenticate
+human consent. Configs requiring word review still use the existing terminal-only `approve` flow.

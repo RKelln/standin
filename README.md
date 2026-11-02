@@ -11,7 +11,7 @@ It is made for small businesses and non-profits who want to use an AI coding age
 similar) on their own records: invoices, bank exports, customer lists. It is the tool behind the "share
 safely" step of [Get2Know](https://github.com/RKelln/get2know).
 
-**Status:** v0.2.0, early, and **under test only: no real-world use yet.** No business or non-profit
+**Status:** v0.2.1, early, and **under test only: no real-world use yet.** No business or non-profit
 has run it on its own records. It is tested on invented files and in Claude Code 2.1.314 on Linux,
 and its name spotting has been measured once on real writing (see "How well the name spotting
 works" below). See also "What it misses".
@@ -77,6 +77,19 @@ web link or HTML tag, Standin leaves the stand-in and warns you. Read every rest
 opening it in a spreadsheet or browser. This is not a general check for safe HTML or formulas. A value
 that is itself a web link (a URL pasted into notes, say) is left as a stand-in in every restored copy:
 fill it in by hand where you need it.
+
+### Approve column rules in chat
+
+Your agent can run `standin review`, show all rules and ask you to approve them in chat.
+It must explain which real values stay, and that `scan` leaves names Standin does not know.
+After you say yes, it runs `standin approve-columns CONFIG_SHA256`, using the version code from
+review. Changed rules need a new review and approval. Standin relies on the agent waiting for
+your answer; it cannot check who said yes.
+
+Configs needing word checks still require `standin approve` in your own terminal, including
+scanned fields in text files. Real words and excerpts must never go in chat.
+The mapping is secret and is never part of chat approval. For existing projects, the person
+should rerun `standin init` to refresh the agent instructions after updating the binary.
 
 ### Free text (`.md` and `.txt`)
 

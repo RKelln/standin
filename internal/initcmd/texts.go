@@ -30,7 +30,11 @@ This project uses standin to keep private details away from AI agents.
 - Do not use wildcards or whole-folder searches outside ` + "`scrubbed/`" + `. Name files in ` + "`scrubbed/`" + `,
   like ` + "`grep -rn word scrubbed/`" + `.
 - New file? Read its shape file in ` + "`shape/`" + ` and propose rules in ` + "`standin.config.json`" + `.
-  The person runs ` + "`standin review`" + ` and ` + "`standin approve`" + `, then ` + "`standin scrub`" + `.
+  Run standin review. Show all rules and risks in chat and wait for the person's explicit yes.
+  If review offers standin approve-columns HASH, run that exact command only after their yes.
+  Changed rules need a new review and yes. Silence is not approval. Otherwise the person runs
+  standin approve in their own terminal for private word review. Never show words or excerpts
+  in chat. Then run standin scrub.
 - Problem (a real value got through, a file will not scrub)? Stop. Ask the person to run
   ` + "`standin report`" + `, and describe what happened in words. Put no names, numbers or other data
   from the files in the description.

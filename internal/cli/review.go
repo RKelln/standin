@@ -170,20 +170,24 @@ func runReview(c *ctx) error {
 		}
 	}
 	_, _ = fmt.Fprintln(c.env.Stdout)
+	if !usesWords(cfg) {
+		_, _ = fmt.Fprintf(c.env.Stdout, "Column approval in chat: show all rules above and ask the person first.\nAfter an explicit yes, run: standin approve-columns %s\nThis saves their choice; it cannot check who said yes. The mapping is secret. Never give it to the AI.\n", cfg.Hash)
+	}
 	switch {
 	case !needsApproval(cfg):
 		_, _ = fmt.Fprintln(c.env.Stdout, "This config has no keep, scan or word check, so it needs no approval.")
 	case approved:
 		_, _ = fmt.Fprintln(c.env.Stdout, "Approved: yes. The keeps, scans and word choices above will be used.")
 	default:
-		_, _ = fmt.Fprintf(c.env.Stdout, "Approved: no. %s `standin scrub` will not run until you run `standin approve` yourself, in your own terminal.\n", why)
+		_, _ = fmt.Fprintf(c.env.Stdout, "Approved: no. %s `standin scrub` will not run until you run `standin approve` in your own terminal or use column approval in chat if offered above.\n", why)
 		c.warnings++
 	}
 	return nil
 }
 
 func runApprove(c *ctx) error {
-	if !c.env.StdinIsTerminal() {
+	chat := c.cmd == "approve-columns"
+	if !chat && !c.env.StdinIsTerminal() {
 		return fail.New("no-terminal", "approve must be run by a person typing in a terminal, not by an AI or a script. Open a terminal, go to the project folder, and run `standin approve`.")
 	}
 	cfg, err := c.loadConfig()
@@ -191,6 +195,14 @@ func runApprove(c *ctx) error {
 		return err
 	}
 	wordCheck := usesWords(cfg)
+	if chat {
+		if wordCheck {
+			return fail.New("not-approved", "This config needs private word review. Run standin approve in your own terminal. I approved nothing.")
+		}
+		if len(c.args) != 1 || c.args[0] != cfg.Hash {
+			return fail.New("not-approved", "The config does not match the reviewed version. Run standin review, show the rules in chat, and ask the person again. I approved nothing.")
+		}
+	}
 	if wordCheck && !c.env.StdoutIsTerminal() {
 		return fail.New("no-terminal", "approve shows words from your files, so it must print to your screen, not to a file or another program. Run `standin approve` in your own terminal.")
 	}
@@ -225,6 +237,9 @@ func runApprove(c *ctx) error {
 		return line, nil
 	}
 	ask := func(q string) (bool, error) {
+		if chat {
+			return true, c.output.Error()
+		}
 		_, _ = fmt.Fprint(out, q+" Type yes: ")
 		line, err := readLine()
 		if err != nil {

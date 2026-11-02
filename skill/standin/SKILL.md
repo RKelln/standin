@@ -78,16 +78,18 @@ The person does the steps marked **(person)**. You can run the others if you hav
    - **Email (`.eml`)** uses the same `fields`, `tables` and `text` rules. The scrubbed copy is a
      plain-text view, and restore returns that view. Attachments are skipped; formatting, links and
      pictures are not kept. Separate body parts and forwarded messages stay in order.
-4. **(person)** Runs `standin review` to read the rules as a plain table. (You may run it too. For
-   text files it shows only counts of words.)
-5. **(person)** Runs `standin approve` in their own terminal. It asks them yes or no for each
-   file rule's group of keeps and group of scans, each word check and each kept word group. It shows
-   them the candidate words so they can pick which ones to keep. You cannot do this step, and you
-   should not try. If the config changes later, they
-   must approve again.
+4. Run `standin review`. Show all rules in chat. Explain which real values stay and that scan
+   leaves names Standin does not know in the text.
+5. If review offers `standin approve-columns HASH`, ask the person to approve all listed rules
+   and wait for an explicit yes. Only then run that exact command. Never approve your own proposal
+   or treat silence as yes. Changed rules need a new review and approval. The command saves their
+   choice; it cannot check who said yes.
+   Otherwise the person runs `standin approve` in their own terminal for private word review.
+   Never show candidate words or excerpts in chat.
 6. Run `standin scrub` (or ask the person to). It writes the files in `scrubbed/`. If the config
-   has a `keep`, `scan` or word check that is not approved yet, scrub stops and writes nothing: ask
-   the person to run `standin approve`. If it says new words became stand-ins (exit 1), the
+   has a `keep`, `scan` or word check that is not approved yet, scrub stops and writes nothing:
+   return to `standin review` and follow steps 4–5, using chat approval when offered.
+   If it says new words became stand-ins (exit 1), the
    scrubbed files are fine to use; tell the person they can run `standin approve` to keep any.
 7. If a step says no and stops (exit code 2), read the message, fix the cause, and try again.
    Do not try to get around it.

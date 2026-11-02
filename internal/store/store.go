@@ -602,7 +602,7 @@ func LoadErrors(dir string) []ErrorEntry {
 
 // Only built-in labels may leave the private error log through report.
 // A hand-edited log must not turn this data-free report into a secret reader.
-var safeErrorCommand = stringSet("shape review approve scrub restore show check report version licences")
+var safeErrorCommand = stringSet("shape review approve approve-columns scrub restore show check report version licences")
 var safeErrorCode = stringSet(`error active-content approval-bad approval-read bad-answer bad-csv bad-encoding
 bad-json bad-quote config-bad config-read duplicate-header empty hidden-char json-dup json-key json-shape
 left-over lone-cr mapping-bad mapping-missing mapping-read name-is-data no-answer no-config no-mapping

@@ -101,6 +101,7 @@ func TestBashNormalWorkAllowed(t *testing.T) {
 		"head -5 shape/*.md",
 		`grep "[PERSON_1]" scrubbed/fresh.csv`,
 		`grep 'a.*b' scrubbed/fresh.csv`,
+		"standin approve-columns abc123",
 		"standin scrub",
 		"standin scrub raw/fresh.csv",
 		"standin shape raw/*.csv",

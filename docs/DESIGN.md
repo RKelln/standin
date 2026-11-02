@@ -702,3 +702,15 @@ Six suggestions from a trial on a made-up shop folder. Weighed for general use, 
     Cost: a rank word in a non-name context now puts the next capitalised word in the name-like group
     ("Inspector Roadworks"); the person rules on it at approve, as with every other candidate.
     (`docs/research/tab-results.md` has the before-and-after tables.)
+
+### Column approval in chat (2026-11-02)
+
+92. **Column-only configs may be approved through chat.** Ryan asked to remove Terminal use for
+    column rules. `review` offers `approve-columns CONFIG_SHA256` only when `usesWords` is false.
+    The agent shows every rule and disclosure risk, waits for explicit human agreement, then saves
+    approval for those exact config bytes. Missing, extra and stale hashes refuse. Configs needing
+    word review refuse before reading raw files or word choices. Existing approval storage and
+    invalidation apply. Ordinary `approve` remains terminal-only. This replaces earlier requirements
+    that every approval be a person-only command: chat approval trusts the agent to wait for the
+    person. The hash binds the config, not the human. No new harness feature or network access is
+    involved. Mixed configs still require the terminal flow; separate partial approvals are deferred.

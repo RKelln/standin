@@ -392,7 +392,7 @@ func runScrub(c *ctx) error {
 		// Refuse rather than tokenize keep and scan columns as VALUE: those
 		// whole-cell stand-ins would join the mapping, and a later approved
 		// scrub would then swap whole cells in scan columns (decision 33).
-		return fail.New("not-approved", "%s The config keeps or scans some columns, or checks the words in free text, so a person must approve it first. I wrote nothing. Run `standin approve` yourself, in your own terminal, then run `standin scrub` again.", why)
+		return fail.New("not-approved", "%s The config keeps or scans some columns, or checks the words in free text, so a person must approve it first. I wrote nothing. Run `standin review` for chat approval options, or `standin approve` in your own terminal, then run `standin scrub` again.", why)
 	}
 	mapPath := filepath.Join(privDir, store.MappingFile)
 	m, exists, err := mapping.Load(mapPath)

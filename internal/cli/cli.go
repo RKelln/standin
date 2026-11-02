@@ -85,6 +85,7 @@ func init() {
 	commands = []command{
 		{"shape", "standin shape [--project DIR] [FILE...]", "Describe each raw file for the AI, with no real values.", runShape, nil},
 		{"review", "standin review [--project DIR]", "Show the config as a plain table, keeps first.", runReview, nil},
+		{"approve-columns", "standin approve-columns CONFIG_SHA256", "Save column approval after the person says yes in chat. No word review.", runApprove, nil},
 		{"approve", "standin approve [--project DIR]", "Approve the config. You must type the answers yourself.", runApprove, nil},
 		{"scrub", "standin scrub [--project DIR] [FILE...]", "Make the scrubbed copy the AI reads, and update the mapping.", runScrub, nil},
 		{"restore", "standin restore [--project DIR] FILE... | -", "Put real values back in text the AI wrote.", runRestore, nil},

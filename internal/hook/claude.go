@@ -217,7 +217,7 @@ var (
 	// One plain standin command that never prints a real value, with no shell
 	// joins, pipes, redirects or substitutions. It may name raw/ (to shape or scrub it).
 	// The program must be the bare word standin (found on PATH) or this very program.
-	safeStandinRe = regexp.MustCompile("^\\s*(standin|STANDIN_SELF)\\s+(shape|scrub|check|review|report|version)\\b[^;|&`$()<>{}\\n\\r]*$")
+	safeStandinRe = regexp.MustCompile("^\\s*(standin|STANDIN_SELF)\\s+(approve-columns|shape|scrub|check|review|report|version)\\b[^;|&`$()<>{}\\n\\r]*$")
 	// Short flag clusters that mean "recursive" for grep, cp, ls and friends.
 	recFlagRe = regexp.MustCompile(`^-[A-Za-z]*[rR][A-Za-z]*$`)
 )
